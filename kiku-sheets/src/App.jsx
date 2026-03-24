@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.13";
+const VERSION = "v1.15";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -285,7 +285,7 @@ function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, o
 }
 
 // ── プロジェクト列（ドロップゾーン）──
-function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop}) {
+function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, isProjectDragOver}) {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
@@ -305,12 +305,13 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
       width:280, flexShrink:0, display:"flex", flexDirection:"column",
       background: dragOver ? `${color}08` : "rgba(246,246,248,1)",
       borderRadius:12,
-      border: dragOver ? `2px solid ${color}` : "1px solid rgba(0,0,0,.07)",
-      overflow:"hidden", transition:"border .15s, background .15s"
+      border: isProjectDragOver ? `2px dashed ${color}` : dragOver ? `2px solid ${color}` : "1px solid rgba(0,0,0,.07)",
+      overflow:"hidden", transition:"border .15s, background .15s",
+      opacity: isProjectDragOver ? 0.7 : 1,
     }}
-      onDragOver={e=>{ e.preventDefault(); setDragOver(true); }}
-      onDragLeave={()=>setDragOver(false)}
-      onDrop={e=>{ e.preventDefault(); setDragOver(false); onDrop(project); }}>
+      onDragOver={e=>{ e.preventDefault(); if(dragOver===false) setDragOver(true); }}
+      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
+      onDrop={e=>{ e.preventDefault(); setDragOver(false); onDrop(project); onProjectDrop(project); }}>
 
       {/* ヘッダー */}
       <div style={{padding:"12px 14px 10px",borderBottom:`2px solid ${color}60`,background:"#fff"}}>
@@ -421,9 +422,11 @@ body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica 
 .sb-proj-del:hover{color:#ff453a}
 .sb-footer{padding:10px 10px 6px;border-top:1px solid rgba(255,255,255,.06);margin-top:auto}
 .board-wrap{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.board{display:flex;gap:12px;padding:16px 20px 20px;overflow-x:auto;flex:1;align-items:flex-start}
-.board::-webkit-scrollbar{height:6px}
-.board::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:10px}
+.board{display:flex;gap:12px;padding:16px 20px 20px;overflow-x:auto;flex:1;align-items:flex-start;scroll-behavior:smooth;user-select:none}
+.board::-webkit-scrollbar{height:8px}
+.board::-webkit-scrollbar-track{background:rgba(0,0,0,.06);border-radius:10px}
+.board::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:10px;transition:background .2s}
+.board::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.35)}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(3px)}
 .modal{background:#fff;border-radius:14px;padding:24px;width:300px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
 .modal h3{font-size:15px;font-weight:700;color:#1c1c1e;margin-bottom:16px}
@@ -445,6 +448,11 @@ export default function App() {
   const [newProjName, setNewProjName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const dragTaskId = useRef(null);
+  const dragProjectName = useRef(null);
+  const boardRef = useRef(null);
+  const scrollStart = useRef({x:0, left:0});
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [dragOverProject, setDragOverProject] = useState(null);
 
   const ts = () => new Date().toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"});
 
@@ -491,6 +499,18 @@ export default function App() {
     save({tasks:tasks.map(t=>t.project===name?{...t,project:"その他"}:t),projects:projects.filter(p=>p!==name)});
     setConfirmDelete(null);
     if (filterProject===name) setFilterProject("all");
+  };
+  const handleProjectDragStart = name => { dragProjectName.current = name; };
+  const handleProjectDrop = toName => {
+    if (!dragProjectName.current || dragProjectName.current === toName) { dragProjectName.current = null; setDragOverProject(null); return; }
+    const from = projects.indexOf(dragProjectName.current);
+    const to = projects.indexOf(toName);
+    const newProjects = [...projects];
+    newProjects.splice(from, 1);
+    newProjects.splice(to, 0, dragProjectName.current);
+    save({...data, projects: newProjects});
+    dragProjectName.current = null;
+    setDragOverProject(null);
   };
 
   // ドラッグ&ドロップでプロジェクト移動
@@ -604,7 +624,27 @@ export default function App() {
 
           {/* カンバンボード */}
           <div className="board-wrap">
-            <div className="board">
+            <div className="board" ref={boardRef}
+              onWheel={e=>{
+                if(e.deltaY!==0){ e.preventDefault(); boardRef.current.scrollLeft+=e.deltaY*1.5; }
+              }}
+              onMouseDown={e=>{
+                // タスクカードやボタン以外の場所でドラッグスクロール
+                if(e.target===boardRef.current||e.target.classList.contains('board')){
+                  setIsScrolling(true);
+                  scrollStart.current={x:e.clientX, left:boardRef.current.scrollLeft};
+                  boardRef.current.style.cursor='grabbing';
+                }
+              }}
+              onMouseMove={e=>{
+                if(!isScrolling) return;
+                const dx = e.clientX - scrollStart.current.x;
+                boardRef.current.scrollLeft = scrollStart.current.left - dx;
+              }}
+              onMouseUp={()=>{ setIsScrolling(false); if(boardRef.current) boardRef.current.style.cursor=''; }}
+              onMouseLeave={()=>{ setIsScrolling(false); if(boardRef.current) boardRef.current.style.cursor=''; }}
+              style={{cursor: isScrolling?'grabbing':'default'}}
+            >
               {visibleProjects.map(p=>(
                 <ProjectColumn
                   key={p}
@@ -622,6 +662,9 @@ export default function App() {
                   onSetConfirmDelete={setConfirmDelete}
                   onDragStart={handleDragStart}
                   onDrop={handleDrop}
+                  onProjectDragStart={handleProjectDragStart}
+                  onProjectDrop={handleProjectDrop}
+                  isProjectDragOver={dragOverProject===p}
                 />
               ))}
             </div>
