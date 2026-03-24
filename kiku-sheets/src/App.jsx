@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.25";
+const VERSION = "v1.27";
 const USER_KEY = "link-user-v1";
+const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
+const AUTH_KEY = "link-auth-v1";
 const STORAGE_KEY = "link-team-v1";
 
 const MEMBERS = ["待場", "内藤", "井上"];
@@ -65,6 +67,14 @@ async function loadUser() {
 async function saveUser(name) {
   try { if (name) localStorage.setItem(USER_KEY, name); else localStorage.removeItem(USER_KEY); } catch {}
   try { if (window.storage) { if (name) await window.storage.set(USER_KEY, name, false); } } catch {}
+}
+
+async function loadAuth() {
+  try { const s = localStorage.getItem(AUTH_KEY); if (s) return JSON.parse(s); } catch {}
+  return null;
+}
+async function saveAuth(info) {
+  try { if (info) localStorage.setItem(AUTH_KEY, JSON.stringify(info)); else localStorage.removeItem(AUTH_KEY); } catch {}
 }
 
 function getToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
@@ -498,6 +508,8 @@ body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica 
 `;
 
 export default function App() {
+  const [authUser, setAuthUser] = useState(null); // {name, email, picture}
+  const [authLoading, setAuthLoading] = useState(true);
   const [data, setData] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -541,6 +553,26 @@ export default function App() {
   const ts = () => new Date().toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"});
 
   useEffect(()=>{
+    // Google認証チェック（localStorageに保存済みなら自動通過）
+    loadAuth().then(saved => {
+      if (saved?.email) {
+        const domain = saved.email.split("@")[1];
+        if (domain === ALLOWED_DOMAIN || !ALLOWED_DOMAIN) setAuthUser(saved);
+      }
+      setAuthLoading(false);
+    });
+    // Google Sign-In コールバック
+    window.__googleSignInCallback = (response) => {
+      const payload = JSON.parse(atob(response.credential.split(".")[1]));
+      const domain = payload.email?.split("@")[1];
+      if (domain === ALLOWED_DOMAIN || !ALLOWED_DOMAIN) {
+        const info = { name: payload.name, email: payload.email, picture: payload.picture };
+        saveAuth(info);
+        setAuthUser(info);
+      } else {
+        alert(`${ALLOWED_DOMAIN} のアカウントのみアクセスできます`);
+      }
+    };
     Promise.all([loadShared(), loadUser()]).then(([d,u])=>{
       const base = d || {tasks:[], projects:[...DEFAULT_PROJECTS]};
       // colorsマップがなければ自動生成
@@ -632,6 +664,40 @@ export default function App() {
 
   if (!data) return <><style>{css}</style><div className="window" style={{alignItems:"center",justifyContent:"center",paddingTop:80,color:"#aaa",fontSize:13}}>読み込み中...</div></>;
 
+  // ローディング中
+  if (authLoading) return <><style>{css}</style><div style={{minHeight:"100vh",background:"#161618",display:"flex",alignItems:"center",justifyContent:"center",color:"#636366",fontSize:13}}>認証確認中...</div></>;
+
+  // Google認証画面
+  if (!authUser) return (
+    <>
+      <style>{css}</style>
+      <script src="https://accounts.google.com/gsi/client" async></script>
+      <div style={{minHeight:"100vh",background:"#161618",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:"#1c1c1e",borderRadius:16,padding:40,width:300,
+          boxShadow:"0 20px 60px rgba(0,0,0,.5)",textAlign:"center"}}>
+          <div style={{fontSize:26,fontWeight:800,color:"#f0ede6",letterSpacing:"-.5px",marginBottom:8}}>Link</div>
+          <div style={{fontSize:13,color:"#636366",marginBottom:32}}>CinemaLeapのアカウントでログイン</div>
+          {/* Google One Tap */}
+          <div id="g_id_onload"
+            data-client_id="102123014963-0ggc4knhhcq58g9k6gvhrtvjnb3nojb5.apps.googleusercontent.com"
+            data-callback="__googleSignInCallback"
+            data-auto_prompt="false"/>
+          <div className="g_id_signin"
+            data-type="standard"
+            data-size="large"
+            data-theme="filled_black"
+            data-text="signin_with"
+            data-shape="rectangular"
+            data-locale="ja"
+            style={{display:"flex",justifyContent:"center"}}/>
+          <div style={{marginTop:20,fontSize:11,color:"#48484a"}}>
+            {ALLOWED_DOMAIN} のアカウントのみ
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   if (!currentUser) return (
     <>
       <style>{css}</style>
@@ -722,6 +788,8 @@ export default function App() {
                 <span style={{color:"#d0d0d0"}}>{currentUser}</span>
                 <button onClick={()=>selectUser(null)} style={{marginLeft:"auto",background:"none",border:"none",
                   cursor:"pointer",color:"#48484a",fontSize:11}} title="切り替え">⇄</button>
+                <button onClick={()=>{ saveAuth(null); setAuthUser(null); }} style={{background:"none",border:"none",
+                  cursor:"pointer",color:"#48484a",fontSize:11}} title="ログアウト">⏻</button>
               </div>
               <span style={{fontSize:10,color:"#48484a"}}>{VERSION}</span>
             </div>
