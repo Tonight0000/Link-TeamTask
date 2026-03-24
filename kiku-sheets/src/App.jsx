@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.21";
+const VERSION = "v1.23";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -17,25 +17,54 @@ const STATUS = {
   done:       { label:"完了",   color:"#28cd41", bg:"rgba(40,205,65,.12)",   dot:"#28cd41" },
 };
 
+const API_URL = (() => {
+  try { return import.meta.env.VITE_API_URL; } catch { return null; }
+})();
+
 async function loadShared() {
-  // window.storage (Claude artifact環境)
-  try { if (window.storage) { const r = await window.storage.get(STORAGE_KEY, true); if (r?.value) return JSON.parse(r.value); } } catch {}
-  // localStorage (Vercel/ブラウザ環境)
+  // 1. Google Sheets APIから取得
+  try {
+    if (API_URL) {
+      const res = await fetch(API_URL);
+      const json = await res.json();
+      if (json.ok && json.data && (json.data.tasks || json.data.projects)) {
+        // localStorageにもキャッシュ
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(json.data)); } catch {}
+        return json.data;
+      }
+    }
+  } catch {}
+  // 2. フォールバック: localStorage
   try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
+  // 3. Claude artifact
+  try { if (window.storage) { const r = await window.storage.get(STORAGE_KEY, true); if (r?.value) return JSON.parse(r.value); } } catch {}
   return null;
 }
+
 async function saveShared(d) {
-  try { if (window.storage) { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } } catch {}
+  // 1. Google Sheets APIに保存
+  try {
+    if (API_URL) {
+      fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "save", data: d })
+      });
+    }
+  } catch {}
+  // 2. localStorageにも保存（オフライン用キャッシュ）
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+  // 3. Claude artifact
+  try { if (window.storage) { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } } catch {}
 }
+
 async function loadUser() {
-  try { if (window.storage) { const r = await window.storage.get(USER_KEY, false); if (r?.value) return r.value; } } catch {}
   try { const s = localStorage.getItem(USER_KEY); if (s) return s; } catch {}
+  try { if (window.storage) { const r = await window.storage.get(USER_KEY, false); if (r?.value) return r.value; } } catch {}
   return null;
 }
 async function saveUser(name) {
-  try { if (window.storage) { await window.storage.set(USER_KEY, name, false); } } catch {}
   try { if (name) localStorage.setItem(USER_KEY, name); else localStorage.removeItem(USER_KEY); } catch {}
+  try { if (window.storage) { if (name) await window.storage.set(USER_KEY, name, false); } } catch {}
 }
 
 function getToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
