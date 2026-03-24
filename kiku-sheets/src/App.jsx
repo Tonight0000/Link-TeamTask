@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.11";
+const VERSION = "v1.12";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -404,7 +404,7 @@ body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica 
 .inner{display:flex;flex:1;overflow:hidden;min-height:calc(100vh - 44px)}
 .sidebar{width:200px;flex-shrink:0;background:rgba(22,22,24,.97);border-right:1px solid rgba(255,255,255,.06);padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .sb-logo{font-size:17px;font-weight:800;color:#f0ede6;letter-spacing:-.5px;padding:6px 10px 14px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:6px}
-.sb-section{font-size:10px;font-weight:700;color:#48484a;letter-spacing:.08em;text-transform:uppercase;padding:10px 10px 4px;display:flex;align-items:center;justify-content:space-between}
+.sb-section{font-size:10px;font-weight:700;color:#aeaeb2;letter-spacing:.08em;text-transform:uppercase;padding:10px 10px 4px;display:flex;align-items:center;justify-content:space-between}
 .sb-plus{background:rgba(10,132,255,.18);border:none;cursor:pointer;color:#0a84ff;font-size:13px;font-weight:700;line-height:1;padding:2px 7px;border-radius:6px;transition:all .15s}
 .sb-plus:hover{background:rgba(10,132,255,.3);color:#3fa9ff}
 .sb-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:background .12s}
