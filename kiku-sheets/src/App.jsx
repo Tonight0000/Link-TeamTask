@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.19";
+const VERSION = "v1.21";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -119,11 +119,11 @@ function DeadlineChip({dateStr, taskId, onSetDate}) {
 }
 
 function CommentPanel({task, onAdd, onDelete, currentUser}) {
-  const [open, setOpen] = useState(false);
+  const comments = task.comments||[];
+  const [open, setOpen] = useState(comments.length > 0);
   const [val, setVal] = useState("");
   const [who, setWho] = useState(currentUser || MEMBERS[0]);
   const ref = useRef();
-  const comments = task.comments||[];
   const handleAdd = () => {
     if (!val.trim()) return;
     const time = new Date().toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -157,7 +157,11 @@ function CommentPanel({task, onAdd, onDelete, currentUser}) {
               {MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
             <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="メモを入力..."
+              onKeyDown={e=>{
+                if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();}
+                if(e.key==="Enter"&&e.shiftKey){handleAdd();}
+              }}
+              placeholder="メモを入力... (Shift+Enterで追加)"
               style={{flex:1,minWidth:80,background:"rgba(0,0,0,.05)",border:"none",borderRadius:6,
                 color:"#1c1c1e",fontSize:11,padding:"4px 8px",outline:"none"}}/>
             <button onClick={handleAdd} style={{background:"#0a84ff",border:"none",borderRadius:6,
@@ -405,7 +409,7 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
             onDelete={onDelete} onEdit={onEdit}
             onAddComment={onAddComment} onDeleteComment={onDeleteComment}
             onDragStart={onDragStart}
-            onDragOver={hoverId=>{ if(hoverId!==t.id) onReorderTask && onReorderTask(project, t.id, hoverId); }}
+            onDragOver={()=>{ if(onReorderTask) onReorderTask(t.id); }}
             onDropTask={()=>{}}
             currentUser={currentUser}/>
         ))}
@@ -537,11 +541,11 @@ export default function App() {
     setConfirmDelete(null);
     if (filterProject===name) setFilterProject("all");
   };
-  const handleReorderTask = (project, dragOverId) => {
-    if (!dragTaskId.current || dragTaskId.current === dragOverId) return;
+  const handleReorderTask = (overTaskId) => {
+    if (!dragTaskId.current || dragType.current !== "task" || dragTaskId.current === overTaskId) return;
     const allTasks = [...tasks];
     const dragIdx = allTasks.findIndex(t => t.id === dragTaskId.current);
-    const overIdx = allTasks.findIndex(t => t.id === dragOverId);
+    const overIdx = allTasks.findIndex(t => t.id === overTaskId);
     if (dragIdx === -1 || overIdx === -1) return;
     const [moved] = allTasks.splice(dragIdx, 1);
     allTasks.splice(overIdx, 0, moved);
@@ -713,7 +717,7 @@ export default function App() {
                   onProjectDrop={handleProjectDrop}
                   setDragOverProject={setDragOverProject}
                   isProjectDragOver={dragOverProject===p}
-                  onReorderTask={(proj, overId) => handleReorderTask(proj, overId)}
+                  onReorderTask={(overId) => handleReorderTask(overId)}
                 />
               ))}
             </div>
