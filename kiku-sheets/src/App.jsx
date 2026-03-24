@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.23";
+const VERSION = "v1.24";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -338,6 +338,8 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
+  // currentUserが変わったらnewMemberも更新
+  useEffect(()=>{ if(currentUser) setNewMember(currentUser); }, [currentUser]);
   const [newDate, setNewDate] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef();
