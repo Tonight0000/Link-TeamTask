@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.28";
+const VERSION = "v1.29";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -573,14 +573,29 @@ export default function App() {
         alert(`${ALLOWED_DOMAIN} のアカウントのみアクセスできます`);
       }
     };
-    // Google Sign-Inスクリプトを動的に読み込む
+    // Google Sign-Inスクリプトを動的に読み込んで初期化
+    const CLIENT_ID = '102123014963-0ggc4knhhcq58g9k6gvhrtvjnb3nojb5.apps.googleusercontent.com';
+    const initGoogle = () => {
+      if (typeof google === 'undefined') return;
+      google.accounts.id.initialize({
+        client_id: CLIENT_ID,
+        callback: window.__googleSignInCallback,
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-btn'),
+        { theme: 'filled_black', size: 'large', text: 'signin_with', locale: 'ja', width: 220 }
+      );
+    };
     if (!document.getElementById('google-signin-script')) {
       const script = document.createElement('script');
       script.id = 'google-signin-script';
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
-      script.defer = true;
+      script.onload = initGoogle;
       document.head.appendChild(script);
+    } else {
+      // すでに読み込み済みの場合
+      setTimeout(initGoogle, 100);
     }
     Promise.all([loadShared(), loadUser()]).then(([d,u])=>{
       const base = d || {tasks:[], projects:[...DEFAULT_PROJECTS]};
@@ -685,19 +700,8 @@ export default function App() {
           boxShadow:"0 20px 60px rgba(0,0,0,.5)",textAlign:"center"}}>
           <div style={{fontSize:26,fontWeight:800,color:"#f0ede6",letterSpacing:"-.5px",marginBottom:8}}>Link</div>
           <div style={{fontSize:13,color:"#636366",marginBottom:32}}>CinemaLeapのアカウントでログイン</div>
-          {/* Google One Tap */}
-          <div id="g_id_onload"
-            data-client_id="102123014963-0ggc4knhhcq58g9k6gvhrtvjnb3nojb5.apps.googleusercontent.com"
-            data-callback="__googleSignInCallback"
-            data-auto_prompt="false"/>
-          <div className="g_id_signin"
-            data-type="standard"
-            data-size="large"
-            data-theme="filled_black"
-            data-text="signin_with"
-            data-shape="rectangular"
-            data-locale="ja"
-            style={{display:"flex",justifyContent:"center"}}/>
+          {/* Google Sign-In ボタン */}
+          <div id="google-signin-btn" style={{display:"flex",justifyContent:"center",minHeight:44}}/>
           <div style={{marginTop:20,fontSize:11,color:"#48484a"}}>
             {ALLOWED_DOMAIN} のアカウントのみ
           </div>
