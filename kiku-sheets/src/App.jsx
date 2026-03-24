@@ -1,374 +1,589 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from "react";
 
-// ここにApps ScriptのURLを貼る
-const API_URL = import.meta.env.VITE_API_URL
+const VERSION = "v1.3";
+const USER_KEY = "link-user-v1";
+const STORAGE_KEY = "link-team-v1";
 
-const MEMBERS = ['待場', '内藤', '井上']
-const MEMBER_COLORS = { '待場': '#c8f564', '内藤': '#8ac8e0', '井上': '#f5a623' }
-const STATUS_CYCLE = { undecided: 'inprogress', inprogress: 'done', done: 'undecided' }
-const STATUS_CONFIG = {
-  undecided:  { label: '未定',   color: '#555',    bg: '#1a1a1a', border: '#2e2e2e', icon: '○' },
-  inprogress: { label: '進行中', color: '#f5a623', bg: '#1f1500', border: '#6b4500', icon: '◑' },
-  done:       { label: '完了',   color: '#c8f564', bg: '#0e1608', border: '#2a3a10', icon: '●' },
+const MEMBERS = ["待場", "内藤", "井上"];
+const MEMBER_COLORS = { "待場": "#28cd41", "内藤": "#0a84ff", "井上": "#ff9f0a" };
+const MEMBER_BG = { "待場": "rgba(40,205,65,.12)", "内藤": "rgba(10,132,255,.12)", "井上": "rgba(255,159,10,.12)" };
+const DEFAULT_PROJECTS = ["BTFF", "IMMERSIVE JOURNEY", "HR", "その他"];
+const PROJ_PALETTE = ["#bf5af2","#ff9f0a","#0a84ff","#30d158","#ff453a","#64d2ff","#ffd60a","#ff6961"];
+
+const STATUS_CYCLE = { undecided:"inprogress", inprogress:"done", done:"undecided" };
+const STATUS = {
+  undecided:  { label:"未定",   color:"#98989d", bg:"rgba(152,152,157,.15)", dot:"#98989d" },
+  inprogress: { label:"進行中", color:"#ff9f0a", bg:"rgba(255,159,10,.12)",  dot:"#ff9f0a" },
+  done:       { label:"完了",   color:"#28cd41", bg:"rgba(40,205,65,.12)",   dot:"#28cd41" },
+};
+
+async function loadShared() {
+  try { const r = await window.storage.get(STORAGE_KEY, true); if (r?.value) return JSON.parse(r.value); } catch {}
+  return null;
+}
+async function saveShared(d) {
+  try { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } catch {}
+}
+async function loadUser() {
+  try { const r = await window.storage.get(USER_KEY, false); if (r?.value) return r.value; } catch {}
+  return null;
+}
+async function saveUser(name) {
+  try { await window.storage.set(USER_KEY, name, false); } catch {}
 }
 
-async function apiFetch(action, task) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify({ action, task }),
-  })
-  return res.json()
+function getToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+
+function fmtDate(s) {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00"), now = getToday();
+  const diff = Math.round((d - now) / 86400000);
+  const mm = d.getMonth() + 1, dd = d.getDate();
+  const day = ["日","月","火","水","木","金","土"][d.getDay()];
+  return { display:`${mm}/${dd}(${day})`, diff, label:diff===0?"今日":diff===1?"明日":null };
 }
 
-function getToday() { const d = new Date(); d.setHours(0,0,0,0); return d }
-
-function formatDate(dateStr) {
-  if (!dateStr) return null
-  const d = new Date(dateStr + 'T00:00:00')
-  const now = getToday()
-  const diff = Math.round((d - now) / 86400000)
-  const mm = d.getMonth() + 1, dd = d.getDate()
-  const day = ['日','月','火','水','木','金','土'][d.getDay()]
-  const label = diff === 0 ? '今日' : diff === 1 ? '明日' : null
-  return { display: `${mm}/${dd}(${day})`, label, diff }
+function projColor(name, projects) {
+  const idx = projects.indexOf(name);
+  return PROJ_PALETTE[idx % PROJ_PALETTE.length] || "#8e8e93";
 }
 
-function DateBadge({ dateStr }) {
-  if (!dateStr) return null
-  const info = formatDate(dateStr)
-  if (!info) return null
-  const { display, label, diff } = info
-  const color = diff < 0 ? '#e07060' : diff === 0 ? '#c8f564' : diff === 1 ? '#8ac8e0' : '#3a3a3a'
-  const bg = diff === 0 ? '#1a220a' : diff < 0 ? '#1a0e0e' : '#111'
+function StatusPill({status, onClick}) {
+  const s = STATUS[status]||STATUS.undecided;
   return (
-    <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'10px', color, background:bg,
-      border:`1px solid ${color}33`, borderRadius:'4px', padding:'1px 7px', marginLeft:'4px', whiteSpace:'nowrap' }}>
-      {label ? `${label} ${display}` : display}
-    </span>
-  )
-}
-
-function MemberBadge({ member }) {
-  const color = MEMBER_COLORS[member] || '#888'
-  return (
-    <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'10px', color,
-      background: color + '18', border:`1px solid ${color}44`,
-      borderRadius:'4px', padding:'1px 8px', whiteSpace:'nowrap', fontWeight:'600' }}>
-      {member}
-    </span>
-  )
-}
-
-function StatusBtn({ status, onClick }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.undecided
-  return (
-    <button onClick={onClick} style={{ background:cfg.bg, border:`1px solid ${cfg.border}`,
-      borderRadius:'6px', color:cfg.color, fontFamily:"'DM Mono',monospace", fontSize:'10px',
-      fontWeight:'600', padding:'3px 8px', cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
-      {cfg.icon} {cfg.label}
+    <button onClick={onClick} style={{
+      background:s.bg, border:"none", borderRadius:"20px",
+      color:s.color, fontSize:"11px", fontWeight:600,
+      padding:"2px 8px", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
+    }}
+      onMouseEnter={e=>e.currentTarget.style.filter="brightness(.88)"}
+      onMouseLeave={e=>e.currentTarget.style.filter=""}>
+      <span style={{width:5,height:5,borderRadius:"50%",background:s.dot,display:"inline-block",flexShrink:0}}/>
+      {s.label}
     </button>
-  )
+  );
 }
 
-function CommentSection({ task, onAdd, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const [val, setVal] = useState('')
-  const [who, setWho] = useState(MEMBERS[0])
-  const inputRef = useRef(null)
-  const comments = task.comments || []
+function MemberPill({member}) {
+  const color = MEMBER_COLORS[member]||"#636366";
+  const bg = MEMBER_BG[member]||"rgba(99,99,102,.1)";
+  return <span style={{fontSize:"11px",fontWeight:600,color,background:bg,borderRadius:"20px",padding:"2px 8px"}}>{member}</span>;
+}
 
-  const handleAdd = () => {
-    if (!val.trim()) return
-    const time = new Date().toLocaleString('ja-JP', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
-    onAdd(task.id, { id: Date.now().toString(), text: val.trim(), time, who })
-    setVal('')
-  }
-
+function DeadlineChip({dateStr, taskId, onSetDate}) {
+  const [editing, setEditing] = useState(false);
+  const ref = useRef(null);
+  if (editing) return (
+    <input ref={ref} type="date" defaultValue={dateStr||""} autoFocus
+      onChange={e=>{onSetDate(taskId,e.target.value);setEditing(false);}}
+      onBlur={()=>setEditing(false)}
+      style={{background:"#fff",border:"1px solid #0a84ff",borderRadius:"6px",
+        fontSize:"11px",fontWeight:600,color:"#1c1c1e",padding:"2px 7px",outline:"none",
+        boxShadow:"0 0 0 3px rgba(10,132,255,.15)"}}/>
+  );
+  if (!dateStr) return (
+    <button onClick={()=>setEditing(true)} style={{background:"none",border:"1px dashed rgba(0,0,0,.15)",
+      borderRadius:"20px",color:"#aeaeb2",fontSize:"11px",padding:"2px 8px",cursor:"pointer"}}>
+      📅 締切
+    </button>
+  );
+  const f = fmtDate(dateStr); if (!f) return null;
+  const {display,label,diff} = f;
+  const isUrgent=diff<0, isSoon=diff===0||diff===1;
+  const color=isUrgent?"#ff453a":isSoon?"#ff9f0a":"#8e8e93";
   return (
-    <div style={{ marginTop:'8px' }}>
-      <button onClick={() => { setOpen(o => !o); setTimeout(() => inputRef.current?.focus(), 50) }}
-        style={{ background:'none', border:'none', cursor:'pointer', fontFamily:"'DM Mono',monospace",
-          fontSize:'10px', color: comments.length > 0 ? '#8ac8e0' : '#333', padding:0,
-          display:'flex', alignItems:'center', gap:'4px' }}>
-        <span>{open ? '▾' : '▸'}</span>
-        <span>{comments.length > 0 ? `コメント ${comments.length}件` : 'コメント追加'}</span>
+    <button onClick={()=>setEditing(true)} style={{background:"none",border:"none",
+      color,fontSize:"11px",fontWeight:500,padding:"2px 4px",cursor:"pointer"}}>
+      {isUrgent?"⚠️":isSoon?"🔥":"📅"} {label||display}
+    </button>
+  );
+}
+
+function CommentPanel({task, onAdd, onDelete}) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState("");
+  const [who, setWho] = useState(MEMBERS[0]);
+  const ref = useRef();
+  const comments = task.comments||[];
+  const handleAdd = () => {
+    if (!val.trim()) return;
+    const time = new Date().toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    onAdd(task.id,{id:Date.now().toString(),text:val.trim(),time,who}); setVal("");
+  };
+  return (
+    <div style={{marginTop:8}}>
+      <button onClick={()=>{setOpen(o=>!o);setTimeout(()=>ref.current?.focus(),60)}}
+        style={{background:"none",border:"none",cursor:"pointer",fontSize:"11px",
+          color:comments.length>0?"#0a84ff":"#c7c7cc",fontWeight:500,padding:0,
+          display:"flex",alignItems:"center",gap:3}}>
+        <span style={{fontSize:9,opacity:.6}}>{open?"▾":"▸"}</span>
+        {comments.length>0?`メモ ${comments.length}件`:"メモ"}
       </button>
-      {open && (
-        <div style={{ marginTop:'8px', paddingLeft:'8px', borderLeft:'2px solid #1e1e1e' }}>
-          {comments.map(c => (
-            <div key={c.id} style={{ marginBottom:'6px', display:'flex', gap:'6px', alignItems:'flex-start' }}>
-              <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'10px',
-                color: MEMBER_COLORS[c.who] || '#555', whiteSpace:'nowrap', marginTop:'2px', fontWeight:'600' }}>{c.who}</span>
-              <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'9px', color:'#333', marginTop:'3px', whiteSpace:'nowrap' }}>{c.time}</span>
-              <span style={{ fontSize:'12px', color:'#b0ada6', flex:1, lineHeight:1.5 }}>{c.text}</span>
-              <button onClick={() => onDelete(task.id, c.id)}
-                style={{ background:'none', border:'none', cursor:'pointer', color:'#333', fontSize:'11px', padding:'0 2px' }}>×</button>
+      {open&&(
+        <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid rgba(0,0,0,.06)"}}>
+          {comments.map(c=>(
+            <div key={c.id} style={{display:"flex",gap:5,marginBottom:5,padding:"5px 8px",
+              background:"rgba(0,0,0,.03)",borderRadius:7,alignItems:"flex-start",fontSize:11}}>
+              <span style={{fontWeight:700,color:MEMBER_COLORS[c.who]||"#636366",whiteSpace:"nowrap"}}>{c.who}</span>
+              <span style={{color:"#aeaeb2",whiteSpace:"nowrap"}}>{c.time}</span>
+              <span style={{color:"#3a3a3c",flex:1,lineHeight:1.4}}>{c.text}</span>
+              <button onClick={()=>onDelete(task.id,c.id)}
+                style={{background:"none",border:"none",cursor:"pointer",color:"#c7c7cc",fontSize:12,padding:0}}>×</button>
             </div>
           ))}
-          <div style={{ display:'flex', gap:'6px', marginTop:'6px', flexWrap:'wrap' }}>
-            <select value={who} onChange={e => setWho(e.target.value)}
-              style={{ background:'#0e0e0e', border:'1px solid #222', borderRadius:'6px',
-                color: MEMBER_COLORS[who] || '#888', fontFamily:"'DM Mono',monospace",
-                fontSize:'11px', padding:'5px 8px', outline:'none', cursor:'pointer' }}>
-              {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+          <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+            <select value={who} onChange={e=>setWho(e.target.value)} style={{
+              background:"rgba(0,0,0,.05)",border:"none",borderRadius:6,
+              color:MEMBER_COLORS[who]||"#636366",fontSize:11,fontWeight:600,padding:"4px 7px",outline:"none"}}>
+              {MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
-            <input ref={inputRef} value={val} onChange={e => setVal(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder="コメントを入力... (Enterで追加)"
-              style={{ flex:1, minWidth:'120px', background:'#0e0e0e', border:'1px solid #222',
-                borderRadius:'6px', color:'#e0ddd6', fontFamily:"'Syne',sans-serif",
-                fontSize:'12px', padding:'5px 10px', outline:'none' }} />
-            <button onClick={handleAdd}
-              style={{ background:'#1a1a1a', border:'1px solid #2a2a2a', borderRadius:'6px',
-                color:'#c8f564', fontFamily:"'DM Mono',monospace", fontSize:'11px',
-                padding:'5px 10px', cursor:'pointer' }}>追加</button>
+            <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="メモを入力..."
+              style={{flex:1,minWidth:80,background:"rgba(0,0,0,.05)",border:"none",borderRadius:6,
+                color:"#1c1c1e",fontSize:11,padding:"4px 8px",outline:"none"}}/>
+            <button onClick={handleAdd} style={{background:"#0a84ff",border:"none",borderRadius:6,
+              color:"#fff",fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer"}}>追加</button>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0e0e0e;color:#f0ede6;font-family:'Syne',sans-serif;min-height:100vh}
-  .app{min-height:100vh;padding:32px 24px;max-width:760px;margin:0 auto}
-  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:36px;gap:12px}
-  .logo{font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:#555;margin-bottom:6px}
-  .title{font-size:34px;font-weight:800;color:#f0ede6;line-height:1}
-  .title span{color:#c8f564}
-  .date-str{font-family:'DM Mono',monospace;font-size:12px;color:#444;margin-top:8px}
-  .badge{background:#131a08;border:1px solid #2a3a10;border-radius:6px;padding:8px 14px;font-family:'DM Mono',monospace;font-size:11px;color:#7ab83a;white-space:nowrap;flex-shrink:0}
-  .badge.saving{background:#111;border-color:#333;color:#666}
-  .badge.error{background:#1a0808;border-color:#3a1010;color:#e07060}
-  .tip{background:#111;border:1px solid #1e1e1e;border-left:3px solid #c8f564;border-radius:8px;padding:14px 18px;margin-bottom:24px;font-size:13px;color:#666;line-height:1.75}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px}
-  .stat{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px 16px}
-  .stat-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#444;margin-bottom:6px;font-family:'DM Mono',monospace}
-  .stat-val{font-size:24px;font-weight:800;color:#f0ede6}
-  .stat-val.g{color:#c8f564}.stat-val.r{color:#e07060}.stat-val.y{color:#f5a623}.stat-val.d{color:#333}
-  .filter-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
-  .filter-label{font-family:'DM Mono',monospace;font-size:10px;color:#444;letter-spacing:.1em;text-transform:uppercase}
-  .tab{font-family:'DM Mono',monospace;font-size:11px;padding:5px 11px;border-radius:6px;border:1px solid #1e1e1e;background:none;color:#444;cursor:pointer;transition:all .15s}
-  .tab.on{background:#1a1a1a;color:#c8f564;border-color:#2a2a2a}
-  .tab:hover:not(.on){color:#777}
-  .sec-label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#3a3a3a;font-family:'DM Mono',monospace;margin-bottom:10px;margin-top:20px}
-  .task-list{display:flex;flex-direction:column;gap:7px;margin-bottom:28px}
-  .task{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px;transition:border-color .15s;animation:fi .25s ease forwards;opacity:0}
-  @keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-  .task:hover{border-color:#252525}
-  .task.is-done{opacity:.3}
-  .task.is-prog{border-color:#3a2800;background:#0f0b00}
-  .task.is-over{border-color:#2a1a1a}
-  .tt{font-size:14px;font-weight:600;color:#e8e5de;line-height:1.45;margin-bottom:7px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
-  .task.is-done .tt{text-decoration:line-through;color:#444}
-  .tm{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-  .di{background:none;border:none;outline:none;font-family:'DM Mono',monospace;font-size:11px;color:#3a3a3a;cursor:pointer;padding:0}
-  .di::-webkit-calendar-picker-indicator{filter:invert(.25);cursor:pointer}
-  .add-box{background:#111;border:1px dashed #222;border-radius:10px;padding:16px;margin-bottom:24px}
-  .add-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-  .add-row2{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .ai{flex:1;min-width:160px;background:none;border:none;outline:none;font-family:'Syne',sans-serif;font-size:14px;color:#f0ede6}
-  .ai::placeholder{color:#2e2e2e}
-  .member-sel{background:#0e0e0e;border:1px solid #222;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;padding:6px 10px;outline:none;cursor:pointer}
-  .ad{background:none;border:1px solid #222;outline:none;font-family:'DM Mono',monospace;font-size:12px;color:#555;padding:6px 10px;border-radius:6px;cursor:pointer}
-  .ad::-webkit-calendar-picker-indicator{filter:invert(.3);cursor:pointer}
-  .ab{background:#c8f564;border:none;color:#0e0e0e;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;padding:8px 16px;border-radius:6px;cursor:pointer;white-space:nowrap}
-  .ab:hover{background:#d4ff6e}
-  .empty{text-align:center;padding:40px 0;color:#333;font-size:13px}
-  .error-box{background:#1a0808;border:1px solid #3a1010;border-radius:10px;padding:20px;text-align:center;color:#e07060;font-size:13px;margin-bottom:20px;line-height:1.8}
-  .foot{font-family:'DM Mono',monospace;font-size:10px;color:#2a2a2a;text-align:center;margin-top:20px;padding-bottom:40px}
-`
+// ── タスクカード（ドラッグ対応）──
+function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(task.text);
+  const [dragging, setDragging] = useState(false);
+  const df = task.date ? fmtDate(task.date) : null;
+  const isDone = task.status==="done";
+  const isUrgent = !isDone&&df&&df.diff<0;
+  const isSoon = !isDone&&df&&(df.diff===0||df.diff===1);
+  const borderLeft = isUrgent?"3px solid #ff453a":isSoon?"3px solid #ff9f0a":"3px solid transparent";
+  const commitEdit = () => { if (editText.trim()) onEdit(task.id, editText.trim()); setEditing(false); };
+
+  return (
+    <div
+      draggable={!editing}
+      onDragStart={e=>{
+        setDragging(true);
+        onDragStart(task.id);
+        e.dataTransfer.effectAllowed="move";
+      }}
+      onDragEnd={()=>setDragging(false)}
+      style={{
+        background:"#fff", borderRadius:10, padding:"12px 14px",
+        boxShadow: dragging
+          ? "0 8px 24px rgba(0,0,0,.2), 0 0 0 2px #0a84ff"
+          : "0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)",
+        borderLeft, opacity: dragging ? 0.5 : isDone ? 0.4 : 1,
+        marginBottom:8, transition:"box-shadow .15s, opacity .15s",
+        cursor: editing ? "default" : "grab",
+      }}
+      onMouseEnter={e=>{ if(!dragging) e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.06)"; }}
+      onMouseLeave={e=>{ if(!dragging) e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)"; }}>
+
+      {editing ? (
+        <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:8}}>
+          <input autoFocus value={editText} onChange={e=>setEditText(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditing(false);}}
+            style={{flex:1,background:"#f2f2f7",border:"1.5px solid #0a84ff",borderRadius:7,
+              fontSize:13,fontWeight:500,color:"#1c1c1e",padding:"4px 8px",outline:"none"}}/>
+          <button onClick={commitEdit} style={{background:"#0a84ff",border:"none",borderRadius:6,
+            color:"#fff",fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer"}}>保存</button>
+          <button onClick={()=>setEditing(false)} style={{background:"rgba(0,0,0,.06)",border:"none",borderRadius:6,
+            color:"#636366",fontSize:11,fontWeight:600,padding:"4px 8px",cursor:"pointer"}}>取消</button>
+        </div>
+      ) : (
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:4,marginBottom:8}}>
+          <span onClick={()=>setEditing(true)} style={{
+            fontSize:13,fontWeight:500,color:isDone?"#aeaeb2":"#1c1c1e",
+            lineHeight:1.4,cursor:"text",flex:1,
+            textDecoration:isDone?"line-through":"none"}}>{task.text}</span>
+          <button onClick={e=>{e.stopPropagation();onDelete(task.id);}} style={{
+            background:"none",border:"none",cursor:"pointer",color:"#d1d1d6",
+            fontSize:14,lineHeight:1,padding:"0 2px",flexShrink:0,marginTop:1}}
+            onMouseEnter={e=>e.currentTarget.style.color="#ff453a"}
+            onMouseLeave={e=>e.currentTarget.style.color="#d1d1d6"}>×</button>
+        </div>
+      )}
+      <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
+        <StatusPill status={task.status} onClick={()=>onCycleStatus(task.id)}/>
+        <MemberPill member={task.member||"その他"}/>
+        <DeadlineChip dateStr={task.date} taskId={task.id} onSetDate={onSetDate}/>
+      </div>
+      <CommentPanel task={task} onAdd={onAddComment} onDelete={onDeleteComment}/>
+    </div>
+  );
+}
+
+// ── プロジェクト列（ドロップゾーン）──
+function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop}) {
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState("");
+  const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
+  const [newDate, setNewDate] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef();
+  const pendingCount = tasks.filter(t=>t.status!=="done").length;
+
+  const handleAdd = () => {
+    if (!newText.trim()) return;
+    onAddTask({text:newText.trim(), member:newMember, project, date:newDate});
+    setNewText(""); setNewDate(""); setAdding(false);
+  };
+
+  return (
+    <div id={`col-${project}`} style={{
+      width:280, flexShrink:0, display:"flex", flexDirection:"column",
+      background: dragOver ? `${color}08` : "rgba(246,246,248,1)",
+      borderRadius:12,
+      border: dragOver ? `2px solid ${color}` : "1px solid rgba(0,0,0,.07)",
+      overflow:"hidden", transition:"border .15s, background .15s"
+    }}
+      onDragOver={e=>{ e.preventDefault(); setDragOver(true); }}
+      onDragLeave={()=>setDragOver(false)}
+      onDrop={e=>{ e.preventDefault(); setDragOver(false); onDrop(project); }}>
+
+      {/* ヘッダー */}
+      <div style={{padding:"12px 14px 10px",borderBottom:`2px solid ${color}60`,background:"#fff"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:7}}>
+            <span style={{width:9,height:9,borderRadius:"50%",background:color,display:"inline-block",flexShrink:0}}/>
+            <span style={{fontSize:13,fontWeight:700,color:"#1c1c1e"}}>{project}</span>
+            <span style={{fontSize:11,fontWeight:600,color,background:color+"18",borderRadius:"20px",padding:"1px 7px"}}>{pendingCount}</span>
+          </div>
+          <button onClick={()=>onSetConfirmDelete(project)}
+            style={{background:"none",border:"1px solid rgba(255,69,58,.25)",borderRadius:6,cursor:"pointer",
+              color:"#ff453a",fontSize:11,fontWeight:600,padding:"2px 8px",lineHeight:1,transition:"all .15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,69,58,.1)"}
+            onMouseLeave={e=>e.currentTarget.style.background="none"}>削除</button>
+        </div>
+        <button onClick={()=>{setAdding(true);setTimeout(()=>inputRef.current?.focus(),60)}}
+          style={{width:"100%",background:"rgba(0,0,0,.04)",border:"1px dashed rgba(0,0,0,.12)",
+            borderRadius:8,color:"#8e8e93",fontSize:12,fontWeight:500,padding:"6px 0",cursor:"pointer",transition:"all .15s"}}
+          onMouseEnter={e=>{e.currentTarget.style.background=color+"12";e.currentTarget.style.borderColor=color;e.currentTarget.style.color=color;}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,.04)";e.currentTarget.style.borderColor="rgba(0,0,0,.12)";e.currentTarget.style.color="#8e8e93";}}>
+          ＋ タスクを追加
+        </button>
+      </div>
+
+      {/* タスクエリア */}
+      <div style={{flex:1,overflowY:"auto",padding:"10px 10px 0"}}>
+        {adding && (
+          <div style={{background:"#fff",borderRadius:10,padding:"10px 12px",marginBottom:8,
+            boxShadow:`0 0 0 2px ${color}, 0 4px 12px rgba(0,0,0,.1)`}}>
+            <input ref={inputRef} value={newText} onChange={e=>setNewText(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter")handleAdd();if(e.key==="Escape")setAdding(false);}}
+              placeholder="タスク名... (Enterで追加)"
+              style={{width:"100%",background:"none",border:"none",outline:"none",
+                fontSize:13,color:"#1c1c1e",fontFamily:"inherit",marginBottom:8}}/>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              <select value={newMember} onChange={e=>setNewMember(e.target.value)} style={{
+                background:"rgba(0,0,0,.06)",border:"none",borderRadius:6,
+                color:MEMBER_COLORS[newMember],fontSize:11,fontWeight:600,padding:"4px 7px",outline:"none"}}>
+                {MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
+              <input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)}
+                style={{background:"rgba(0,0,0,.06)",border:"none",borderRadius:6,
+                  fontSize:11,color:"#3a3a3c",padding:"4px 7px",outline:"none",cursor:"pointer"}}/>
+              <div style={{marginLeft:"auto",display:"flex",gap:5}}>
+                <button onClick={()=>setAdding(false)} style={{background:"rgba(0,0,0,.06)",border:"none",
+                  borderRadius:6,color:"#636366",fontSize:11,fontWeight:600,padding:"4px 9px",cursor:"pointer"}}>取消</button>
+                <button onClick={handleAdd} style={{background:color,border:"none",
+                  borderRadius:6,color:"#fff",fontSize:11,fontWeight:600,padding:"4px 11px",cursor:"pointer"}}>追加</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ドロップヒント */}
+        {dragOver && (
+          <div style={{border:`2px dashed ${color}`,borderRadius:10,padding:"16px 0",
+            textAlign:"center",color,fontSize:12,fontWeight:600,marginBottom:8,
+            background:color+"0a"}}>
+            ここにドロップ
+          </div>
+        )}
+
+        {tasks.length===0&&!adding&&!dragOver&&(
+          <div style={{textAlign:"center",padding:"24px 0",color:"#c7c7cc",fontSize:12,fontStyle:"italic"}}>タスクなし</div>
+        )}
+        {tasks.map(t=>(
+          <TaskCard key={t.id} task={t}
+            onCycleStatus={onCycleStatus} onSetDate={onSetDate}
+            onDelete={onDelete} onEdit={onEdit}
+            onAddComment={onAddComment} onDeleteComment={onDeleteComment}
+            onDragStart={onDragStart}/>
+        ))}
+        <div style={{height:10}}/>
+      </div>
+    </div>
+  );
+}
+
+const css=`
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','Inter',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+.window{width:100%;min-height:100vh;display:flex;flex-direction:column}
+.titlebar{height:44px;background:rgba(22,22,24,.96);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0;position:sticky;top:0;z-index:20}
+.traffic{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.traffic.r{background:#ff5f57}.traffic.y{background:#febc2e}.traffic.g{background:#28c840}
+.win-title{font-size:13px;font-weight:600;color:#f0ede6;margin:0 auto;letter-spacing:.01em}
+.sync-pill{font-size:11px;font-weight:500;color:#8e8e93;background:rgba(255,255,255,.08);border-radius:20px;padding:3px 10px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.sync-pill.saving{color:#0a84ff}
+.pulse{width:5px;height:5px;border-radius:50%;background:currentColor}
+.inner{display:flex;flex:1;overflow:hidden;min-height:calc(100vh - 44px)}
+.sidebar{width:200px;flex-shrink:0;background:rgba(22,22,24,.97);border-right:1px solid rgba(255,255,255,.06);padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.sb-logo{font-size:17px;font-weight:800;color:#f0ede6;letter-spacing:-.5px;padding:6px 10px 14px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:6px}
+.sb-section{font-size:10px;font-weight:700;color:#48484a;letter-spacing:.08em;text-transform:uppercase;padding:10px 10px 4px;display:flex;align-items:center;justify-content:space-between}
+.sb-plus{background:none;border:none;cursor:pointer;color:#48484a;font-size:15px;line-height:1;padding:0;transition:color .15s}
+.sb-plus:hover{color:#aeaeb2}
+.sb-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:background .12s}
+.sb-item:hover{background:rgba(255,255,255,.07)}
+.sb-item.on{background:rgba(255,255,255,.11)}
+.sb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sb-label{font-size:12.5px;font-weight:500;color:#d0d0d0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-count{font-size:11px;color:#48484a;font-weight:500;flex-shrink:0}
+.sb-proj-row{display:flex;align-items:center;border-radius:8px;transition:background .1s}
+.sb-proj-row:hover{background:rgba(255,255,255,.07)}
+.sb-proj-row .sb-item{background:none !important}
+.sb-proj-del{background:none;border:none;cursor:pointer;color:#48484a;font-size:11px;padding:4px 8px 4px 0;opacity:0;transition:opacity .15s;line-height:1;flex-shrink:0}
+.sb-proj-row:hover .sb-proj-del{opacity:1}
+.sb-proj-del:hover{color:#ff453a}
+.sb-footer{padding:10px 10px 6px;border-top:1px solid rgba(255,255,255,.06);margin-top:auto}
+.board-wrap{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.board{display:flex;gap:12px;padding:16px 20px 20px;overflow-x:auto;flex:1;align-items:flex-start}
+.board::-webkit-scrollbar{height:6px}
+.board::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:10px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(3px)}
+.modal{background:#fff;border-radius:14px;padding:24px;width:300px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h3{font-size:15px;font-weight:700;color:#1c1c1e;margin-bottom:16px}
+.modal-input{width:100%;background:#f2f2f7;border:none;border-radius:8px;font-size:14px;color:#1c1c1e;padding:10px 12px;outline:none;font-family:inherit}
+.modal-input:focus{box-shadow:0 0 0 3px rgba(10,132,255,.2)}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.btn-cancel{background:rgba(0,0,0,.06);border:none;border-radius:8px;color:#636366;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer}
+.btn-ok{background:#0a84ff;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer}
+`;
 
 export default function App() {
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [lastSync, setLastSync] = useState('--')
-  const [input, setInput] = useState('')
-  const [inputDate, setInputDate] = useState(new Date().toISOString().split('T')[0])
-  const [inputMember, setInputMember] = useState(MEMBERS[0])
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [filterMember, setFilterMember] = useState('all')
+  const [data, setData] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [lastSync, setLastSync] = useState("--");
+  const [filterMember, setFilterMember] = useState("all");
+  const [filterProject, setFilterProject] = useState("all"); // サイドバープロジェクトフィルター
+  const [showProjModal, setShowProjModal] = useState(false);
+  const [newProjName, setNewProjName] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const dragTaskId = useRef(null);
 
-  const fetchTasks = async () => {
-    try {
-      const res = await fetch(API_URL)
-      const data = await res.json()
-      if (data.ok) {
-        setTasks(data.tasks)
-        setLastSync(new Date().toLocaleString('ja-JP', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }))
-        setError(null)
-      }
-    } catch(e) {
-      setError('Googleスプレッドシートに接続できません。VITE_API_URLを確認してください。')
-    }
-    setLoading(false)
-  }
+  const ts = () => new Date().toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"});
 
-  useEffect(() => {
-    fetchTasks()
-    const interval = setInterval(fetchTasks, 15000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(()=>{
+    Promise.all([loadShared(), loadUser()]).then(([d,u])=>{
+      setData(d || {tasks:[], projects:[...DEFAULT_PROJECTS]});
+      setCurrentUser(u || null);
+      setLastSync(ts());
+    });
+    const iv=setInterval(()=>loadShared().then(d=>{if(d){setData(d);setLastSync(ts());}}),15000);
+    return ()=>clearInterval(iv);
+  },[]);
 
-  const updateTask = async (updatedTask) => {
-    setSaving(true)
-    setTasks(p => p.map(t => t.id === updatedTask.id ? updatedTask : t))
-    await apiFetch('update', updatedTask)
-    setSaving(false)
-  }
+  const save = async next=>{ setData(next); setSaving(true); await saveShared(next); setSaving(false); setLastSync(ts()); };
 
-  const cycleStatus = (id) => {
-    const task = tasks.find(t => t.id === id)
-    updateTask({ ...task, status: STATUS_CYCLE[task.status] ?? 'undecided' })
-  }
+  const tasks = data?.tasks||[];
+  const projects = data?.projects||DEFAULT_PROJECTS;
 
-  const setDate = (id, date) => {
-    const task = tasks.find(t => t.id === id)
-    updateTask({ ...task, date })
-  }
+  const cycleStatus = id=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,status:STATUS_CYCLE[t.status]??"undecided"}:t)});
+  const setDate=(id,date)=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,date}:t)});
+  const editTask=(id,text)=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,text}:t)});
+  const deleteTask=id=>save({...data,tasks:tasks.filter(t=>t.id!==id)});
+  const addComment=(tid,c)=>save({...data,tasks:tasks.map(t=>t.id===tid?{...t,comments:[...(t.comments||[]),c]}:t)});
+  const delComment=(tid,cid)=>save({...data,tasks:tasks.map(t=>t.id===tid?{...t,comments:(t.comments||[]).filter(c=>c.id!==cid)}:t)});
+  const selectUser=async name=>{ setCurrentUser(name); await saveUser(name); };
+  const addTask=({text,member,project,date})=>{
+    save({...data,tasks:[{id:crypto.randomUUID(),text,member,project,status:"undecided",
+      date,comments:[],createdAt:new Date().toISOString()},...tasks]});
+  };
+  const addProject=()=>{
+    if (!newProjName.trim()||projects.includes(newProjName.trim())) return;
+    save({...data,projects:[...projects,newProjName.trim()]});
+    setNewProjName(""); setShowProjModal(false);
+  };
+  const deleteProject=name=>{
+    save({tasks:tasks.map(t=>t.project===name?{...t,project:"その他"}:t),projects:projects.filter(p=>p!==name)});
+    setConfirmDelete(null);
+    if (filterProject===name) setFilterProject("all");
+  };
 
-  const addComment = (taskId, comment) => {
-    const task = tasks.find(t => t.id === taskId)
-    updateTask({ ...task, comments: [...(task.comments || []), comment] })
-  }
+  // ドラッグ&ドロップでプロジェクト移動
+  const handleDragStart = id => { dragTaskId.current = id; };
+  const handleDrop = toProject => {
+    if (!dragTaskId.current) return;
+    save({...data,tasks:tasks.map(t=>t.id===dragTaskId.current?{...t,project:toProject}:t)});
+    dragTaskId.current = null;
+  };
 
-  const deleteComment = (taskId, commentId) => {
-    const task = tasks.find(t => t.id === taskId)
-    updateTask({ ...task, comments: (task.comments || []).filter(c => c.id !== commentId) })
-  }
+  // フィルター適用
+  let visibleTasks = filterMember==="all" ? tasks : tasks.filter(t=>t.member===filterMember);
+  const visibleProjects = filterProject==="all" ? projects : projects.filter(p=>p===filterProject);
 
-  const addTask = async () => {
-    if (!input.trim()) return
-    const newTask = {
-      id: crypto.randomUUID(),
-      text: input.trim(),
-      member: inputMember,
-      status: 'undecided',
-      date: inputDate,
-      comments: [],
-    }
-    setTasks(p => [newTask, ...p])
-    setInput('')
-    setSaving(true)
-    await apiFetch('add', newTask)
-    setSaving(false)
-  }
+  if (!data) return <><style>{css}</style><div className="window" style={{alignItems:"center",justifyContent:"center",paddingTop:80,color:"#aaa",fontSize:13}}>読み込み中...</div></>;
 
-  const now = getToday()
-  const undecidedList = tasks.filter(t => t.status === 'undecided')
-  const inprogressList = tasks.filter(t => t.status === 'inprogress')
-  const doneList = tasks.filter(t => t.status === 'done')
-  const overdueList = tasks.filter(t => t.status !== 'done' && t.date && new Date(t.date+'T00:00:00') < now)
-
-  let filtered = tasks
-  if (filterStatus === 'undecided') filtered = undecidedList
-  else if (filterStatus === 'inprogress') filtered = inprogressList
-  else if (filterStatus === 'done') filtered = doneList
-  else if (filterStatus === 'overdue') filtered = overdueList
-  if (filterMember !== 'all') filtered = filtered.filter(t => t.member === filterMember)
-
-  const nowStr = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'long', day:'numeric', weekday:'short' })
+  if (!currentUser) return (
+    <>
+      <style>{css}</style>
+      <div style={{minHeight:"100vh",background:"#161618",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:"#1c1c1e",borderRadius:16,padding:32,width:280,
+          boxShadow:"0 20px 60px rgba(0,0,0,.5)",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:800,color:"#f0ede6",letterSpacing:"-.5px",marginBottom:8}}>Link</div>
+          <div style={{fontSize:13,color:"#636366",marginBottom:28}}>あなたの名前を選んでください</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {MEMBERS.map(m=>(
+              <button key={m} onClick={()=>selectUser(m)} style={{
+                background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
+                borderRadius:10,padding:"12px 16px",cursor:"pointer",
+                display:"flex",alignItems:"center",gap:10,transition:"all .15s",width:"100%"
+              }}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.12)";e.currentTarget.style.borderColor=MEMBER_COLORS[m];}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.borderColor="rgba(255,255,255,.08)";}}>
+                <span style={{width:10,height:10,borderRadius:"50%",background:MEMBER_COLORS[m],flexShrink:0}}/>
+                <span style={{fontSize:14,fontWeight:600,color:"#f0ede6"}}>{m}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <>
       <style>{css}</style>
-      <div className="app">
-        <div className="header">
-          <div>
-            <div className="logo">Kiku — Team Board</div>
-            <div className="title">チームの<span>タスク</span></div>
-            <div className="date-str">{nowStr}</div>
+      <div className="window">
+        <div className="titlebar">
+          <div className="traffic r"/><div className="traffic y"/><div className="traffic g"/>
+          <div className="win-title">
+            Link — Team Board&nbsp;
+            <span style={{fontWeight:400,color:"#48484a",fontSize:"11px"}}>{VERSION}</span>
           </div>
-          <div className={`badge${saving?' saving':error?' error':''}`}>
-            {saving ? '保存中...' : error ? '⚠ 接続エラー' : `● 同期 ${lastSync}`}
-          </div>
-        </div>
-
-        {error && (
-          <div className="error-box">
-            {error}<br/>
-            <small style={{color:'#a05050'}}>Apps ScriptのURLをVITE_API_URLに設定してください</small>
-          </div>
-        )}
-
-        <div className="tip">
-          誰でもタスクを追加・ステータス更新・コメントできます。データはGoogleスプレッドシートに保存され、15秒ごとに同期されます🌿
-        </div>
-
-        <div className="add-box">
-          <div className="add-row">
-            <input className="ai" placeholder="タスクを追加..." value={input} onChange={e => setInput(e.target.value)} />
-          </div>
-          <div className="add-row2">
-            <select className="member-sel" value={inputMember} onChange={e => setInputMember(e.target.value)}
-              style={{ color: MEMBER_COLORS[inputMember] || '#888' }}>
-              {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <input type="date" className="ad" value={inputDate} onChange={e => setInputDate(e.target.value)} />
-            <button className="ab" onClick={addTask}>＋ 追加</button>
+          <div className={`sync-pill${saving?" saving":""}`}>
+            <span className="pulse"/>
+            {saving?"保存中...":`同期 ${lastSync}`}
           </div>
         </div>
 
-        <div className="stats">
-          <div className="stat"><div className="stat-label">未定</div><div className="stat-val">{undecidedList.length}</div></div>
-          <div className="stat"><div className="stat-label">進行中</div><div className="stat-val y">{inprogressList.length}</div></div>
-          <div className="stat"><div className="stat-label">完了</div><div className="stat-val g">{doneList.length}</div></div>
-          <div className="stat"><div className="stat-label">期限切れ</div><div className={`stat-val ${overdueList.length > 0 ? 'r' : 'd'}`}>{overdueList.length}</div></div>
-        </div>
+        <div className="inner">
+          {/* サイドバー */}
+          <div className="sidebar">
+            <div className="sb-logo">Link</div>
 
-        <div className="filter-row">
-          <span className="filter-label">ステータス</span>
-          {[['all','すべて'],['undecided','未定'],['inprogress','進行中'],['done','完了'],['overdue','期限切れ']].map(([k,l]) => (
-            <button key={k} className={`tab${filterStatus===k?' on':''}`} onClick={() => setFilterStatus(k)}>{l}</button>
-          ))}
-        </div>
-        <div className="filter-row" style={{marginBottom:'20px'}}>
-          <span className="filter-label">担当者</span>
-          <button className={`tab${filterMember==='all'?' on':''}`} onClick={() => setFilterMember('all')}>全員</button>
-          {MEMBERS.map(m => (
-            <button key={m} className={`tab${filterMember===m?' on':''}`}
-              style={filterMember===m?{borderColor:MEMBER_COLORS[m],color:MEMBER_COLORS[m]}:{}}
-              onClick={() => setFilterMember(filterMember===m?'all':m)}>{m}</button>
-          ))}
-        </div>
+            <div className="sb-section">担当者</div>
+            {[["all","全員","#636366"], ...MEMBERS.map(m=>[m,m,MEMBER_COLORS[m]])].map(([k,l,c])=>(
+              <button key={k} className={`sb-item${filterMember===k?" on":""}`} onClick={()=>setFilterMember(k)}>
+                <span className="sb-dot" style={{background:c}}/>
+                <span className="sb-label">{l}</span>
+                <span className="sb-count">{k==="all"?tasks.length:tasks.filter(t=>t.member===k).length}</span>
+              </button>
+            ))}
 
-        {loading ? (
-          <div className="empty">読み込み中...</div>
-        ) : filtered.length > 0 ? (
-          <>
-            <div className="sec-label">{filtered.length}件</div>
-            <div className="task-list">
-              {filtered.map((t, i) => {
-                const df = t.date ? formatDate(t.date) : null
-                const isDone = t.status === 'done'
-                const isProg = t.status === 'inprogress'
-                const isOver = !isDone && df && df.diff < 0
-                return (
-                  <div key={t.id}
-                    className={`task${isDone?' is-done':''}${isProg?' is-prog':''}${isOver?' is-over':''}`}
-                    style={{animationDelay:`${i*25}ms`}}>
-                    <div className="tt">{t.text}<DateBadge dateStr={t.date} /></div>
-                    <div className="tm">
-                      <StatusBtn status={t.status} onClick={() => cycleStatus(t.id)} />
-                      <MemberBadge member={t.member || 'その他'} />
-                      <input type="date" className="di" value={t.date||''} onChange={e => setDate(t.id, e.target.value)} />
-                    </div>
-                    <CommentSection task={t} onAdd={addComment} onDelete={deleteComment} />
-                  </div>
-                )
-              })}
+            <div className="sb-section" style={{marginTop:8}}>
+              プロジェクト
+              <button className="sb-plus" onClick={()=>setShowProjModal(true)} title="追加">＋</button>
             </div>
-          </>
-        ) : (
-          <div className="empty">該当するタスクはありません</div>
-        )}
+            {/* 全件表示ボタン */}
+            <button className={`sb-item${filterProject==="all"?" on":""}`} onClick={()=>setFilterProject("all")}>
+              <span className="sb-dot" style={{background:"#636366"}}/>
+              <span className="sb-label">すべて</span>
+              <span className="sb-count">{tasks.length}</span>
+            </button>
+            {/* 各プロジェクト → クリックでフィルター（スクロールなし） */}
+            {projects.map(p=>{
+              const c = projColor(p,projects);
+              return(
+                <div key={p} className="sb-proj-row">
+                  <button className={`sb-item${filterProject===p?" on":""}`} onClick={()=>setFilterProject(p)}>
+                    <span className="sb-dot" style={{background:c}}/>
+                    <span className="sb-label">{p}</span>
+                    <span className="sb-count">{tasks.filter(t=>t.project===p).length}</span>
+                  </button>
+                  <button className="sb-proj-del" onClick={()=>setConfirmDelete(p)} title="削除">✕</button>
+                </div>
+              );
+            })}
 
-        <div className="foot">Kiku — CinemaLeap Team Board　|　Powered by Google Sheets</div>
+            <div className="sb-footer">
+              <div style={{fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:MEMBER_COLORS[currentUser]||"#636366",flexShrink:0}}/>
+                <span style={{color:"#d0d0d0"}}>{currentUser}</span>
+                <button onClick={()=>selectUser(null)} style={{marginLeft:"auto",background:"none",border:"none",
+                  cursor:"pointer",color:"#48484a",fontSize:11}} title="切り替え">⇄</button>
+              </div>
+              <span style={{fontSize:10,color:"#48484a"}}>{VERSION}</span>
+            </div>
+          </div>
+
+          {/* カンバンボード */}
+          <div className="board-wrap">
+            <div className="board">
+              {visibleProjects.map(p=>(
+                <ProjectColumn
+                  key={p}
+                  project={p}
+                  tasks={visibleTasks.filter(t=>t.project===p)}
+                  color={projColor(p,projects)}
+                  currentUser={currentUser}
+                  onCycleStatus={cycleStatus}
+                  onSetDate={setDate}
+                  onDelete={deleteTask}
+                  onEdit={editTask}
+                  onAddTask={addTask}
+                  onAddComment={addComment}
+                  onDeleteComment={delComment}
+                  onSetConfirmDelete={setConfirmDelete}
+                  onDragStart={handleDragStart}
+                  onDrop={handleDrop}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
+
+      {showProjModal&&(
+        <div className="modal-bg" onClick={()=>setShowProjModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <h3>プロジェクトを追加</h3>
+            <input className="modal-input" placeholder="プロジェクト名..." value={newProjName}
+              onChange={e=>setNewProjName(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addProject()} autoFocus/>
+            <div className="modal-btns">
+              <button className="btn-cancel" onClick={()=>setShowProjModal(false)}>キャンセル</button>
+              <button className="btn-ok" onClick={addProject}>追加</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete&&(
+        <div className="modal-bg" onClick={()=>setConfirmDelete(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <h3 style={{color:"#ff453a"}}>プロジェクトを削除</h3>
+            <p style={{fontSize:13,color:"#3a3a3c",lineHeight:1.6,margin:"8px 0 20px"}}>
+              「<strong>{confirmDelete}</strong>」を削除しますか？<br/>
+              <span style={{color:"#8e8e93",fontSize:12}}>タスクは「その他」に移動されます。</span>
+            </p>
+            <div className="modal-btns">
+              <button className="btn-cancel" onClick={()=>setConfirmDelete(null)}>キャンセル</button>
+              <button style={{background:"#ff453a",border:"none",borderRadius:8,color:"#fff",fontSize:13,
+                fontWeight:600,padding:"8px 14px",cursor:"pointer"}}
+                onClick={()=>deleteProject(confirmDelete)}>削除する</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
-  )
+  );
 }
