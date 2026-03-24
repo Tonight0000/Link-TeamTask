@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.27";
+const VERSION = "v1.28";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -573,6 +573,15 @@ export default function App() {
         alert(`${ALLOWED_DOMAIN} のアカウントのみアクセスできます`);
       }
     };
+    // Google Sign-Inスクリプトを動的に読み込む
+    if (!document.getElementById('google-signin-script')) {
+      const script = document.createElement('script');
+      script.id = 'google-signin-script';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
     Promise.all([loadShared(), loadUser()]).then(([d,u])=>{
       const base = d || {tasks:[], projects:[...DEFAULT_PROJECTS]};
       // colorsマップがなければ自動生成
@@ -671,7 +680,6 @@ export default function App() {
   if (!authUser) return (
     <>
       <style>{css}</style>
-      <script src="https://accounts.google.com/gsi/client" async></script>
       <div style={{minHeight:"100vh",background:"#161618",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{background:"#1c1c1e",borderRadius:16,padding:40,width:300,
           boxShadow:"0 20px 60px rgba(0,0,0,.5)",textAlign:"center"}}>
