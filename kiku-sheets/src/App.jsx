@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.5";
+const VERSION = "v1.11";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -223,6 +223,67 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
   );
 }
 
+// ── サイドバー プロジェクト行（名前変更対応）──
+function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, onDelete}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(name);
+  const inputRef = useRef();
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setVal(name);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 30);
+  };
+  const commit = () => {
+    if (val.trim() && val.trim() !== name) onRename(val.trim());
+    setEditing(false);
+  };
+
+  if (editing) return (
+    <div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,background:"rgba(255,255,255,.1)"}}>
+      <span style={{width:8,height:8,borderRadius:"50%",background:color,flexShrink:0}}/>
+      <input
+        ref={inputRef}
+        value={val}
+        onChange={e=>setVal(e.target.value.slice(0,20))}
+        onKeyDown={e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") setEditing(false); }}
+        onBlur={commit}
+        maxLength={20}
+        style={{flex:1,background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",
+          borderRadius:5,color:"#f0ede6",fontSize:12,fontWeight:500,
+          padding:"2px 6px",outline:"none",minWidth:0}}/>
+      <span style={{fontSize:10,color:val.length>=18?"#ff453a":"#636366",flexShrink:0}}>{val.length}/20</span>
+    </div>
+  );
+
+  return (
+    <div className="sb-proj-row"
+      onMouseEnter={e=>{e.currentTarget.querySelectorAll('button:not(.sb-item)').forEach(b=>b.style.opacity=1);}}
+      onMouseLeave={e=>{e.currentTarget.querySelectorAll('button:not(.sb-item)').forEach(b=>b.style.opacity=0);}}>
+      <button className={`sb-item${isActive?" on":""}`} onClick={onSelect}>
+        <span className="sb-dot" style={{background:color}}/>
+        <span className="sb-label">{name}</span>
+        <span className="sb-count">{count}</span>
+      </button>
+      <button onClick={startEdit} title="名前変更" style={{
+        background:"rgba(255,255,255,.15)",border:"none",cursor:"pointer",
+        color:"#fff",fontSize:"11px",fontWeight:700,padding:"2px 7px",
+        borderRadius:5,opacity:0,transition:"opacity .15s, background .15s",lineHeight:"1.4",flexShrink:0
+      }}
+        onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.style.background="rgba(10,132,255,.6)";}}
+        onMouseLeave={e=>{e.currentTarget.style.opacity=0;e.currentTarget.style.background="rgba(255,255,255,.15)";}}>✎</button>
+      <button onClick={onDelete} title="削除" style={{
+        background:"rgba(255,255,255,.15)",border:"none",cursor:"pointer",
+        color:"#fff",fontSize:"11px",fontWeight:700,padding:"2px 7px",
+        borderRadius:5,opacity:0,transition:"opacity .15s, background .15s",lineHeight:"1.4",flexShrink:0
+      }}
+        onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.style.background="rgba(255,69,58,.6)";}}
+        onMouseLeave={e=>{e.currentTarget.style.opacity=0;e.currentTarget.style.background="rgba(255,255,255,.15)";}}>✕</button>
+    </div>
+  );
+}
+
 // ── プロジェクト列（ドロップゾーン）──
 function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop}) {
   const [adding, setAdding] = useState(false);
@@ -350,7 +411,7 @@ body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica 
 .sb-item:hover{background:rgba(255,255,255,.07)}
 .sb-item.on{background:rgba(255,255,255,.11)}
 .sb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.sb-label{font-size:12.5px;font-weight:500;color:#d0d0d0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-label{font-size:12.5px;font-weight:500;color:#d0d0d0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
 .sb-count{font-size:11px;color:#48484a;font-weight:500;flex-shrink:0}
 .sb-proj-row{display:flex;align-items:center;border-radius:8px;transition:background .1s}
 .sb-proj-row:hover{background:rgba(255,255,255,.07)}
@@ -417,6 +478,14 @@ export default function App() {
     if (!newProjName.trim()||projects.includes(newProjName.trim())) return;
     save({...data,projects:[...projects,newProjName.trim()]});
     setNewProjName(""); setShowProjModal(false);
+  };
+  const renameProject=(oldName, newName)=>{
+    if (!newName.trim() || newName===oldName || projects.includes(newName.trim())) return;
+    save({
+      tasks: tasks.map(t=>t.project===oldName?{...t,project:newName.trim()}:t),
+      projects: projects.map(p=>p===oldName?newName.trim():p)
+    });
+    if (filterProject===oldName) setFilterProject(newName.trim());
   };
   const deleteProject=name=>{
     save({tasks:tasks.map(t=>t.project===name?{...t,project:"その他"}:t),projects:projects.filter(p=>p!==name)});
@@ -509,14 +578,16 @@ export default function App() {
             {projects.map(p=>{
               const c = projColor(p,projects);
               return(
-                <div key={p} className="sb-proj-row">
-                  <button className={`sb-item${filterProject===p?" on":""}`} onClick={()=>setFilterProject(p)}>
-                    <span className="sb-dot" style={{background:c}}/>
-                    <span className="sb-label">{p}</span>
-                    <span className="sb-count">{tasks.filter(t=>t.project===p).length}</span>
-                  </button>
-                  <button className="sb-proj-del" onClick={()=>setConfirmDelete(p)} title="削除">✕</button>
-                </div>
+                <SidebarProjectItem
+                  key={p}
+                  name={p}
+                  color={c}
+                  count={tasks.filter(t=>t.project===p).length}
+                  isActive={filterProject===p}
+                  onSelect={()=>setFilterProject(p)}
+                  onRename={(newName)=>renameProject(p, newName)}
+                  onDelete={()=>setConfirmDelete(p)}
+                />
               );
             })}
 
@@ -562,9 +633,14 @@ export default function App() {
         <div className="modal-bg" onClick={()=>setShowProjModal(false)}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
             <h3>プロジェクトを追加</h3>
-            <input className="modal-input" placeholder="プロジェクト名..." value={newProjName}
-              onChange={e=>setNewProjName(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&addProject()} autoFocus/>
+            <div style={{position:"relative"}}>
+              <input className="modal-input" placeholder="プロジェクト名..." value={newProjName}
+                onChange={e=>setNewProjName(e.target.value.slice(0,20))}
+                onKeyDown={e=>e.key==="Enter"&&addProject()} autoFocus maxLength={20}/>
+              <span style={{position:"absolute",right:10,bottom:10,fontSize:10,color:newProjName.length>=18?"#ff453a":"#aeaeb2"}}>
+                {newProjName.length}/20
+              </span>
+            </div>
             <div className="modal-btns">
               <button className="btn-cancel" onClick={()=>setShowProjModal(false)}>キャンセル</button>
               <button className="btn-ok" onClick={addProject}>追加</button>
