@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.12";
+const VERSION = "v1.13";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -192,7 +192,7 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
       {editing ? (
         <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:8}}>
           <input autoFocus value={editText} onChange={e=>setEditText(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditing(false);}}
+            onKeyDown={e=>{if(e.key==="Enter"&&e.shiftKey)commitEdit();if(e.key==="Escape")setEditing(false);if(e.key==="Enter"&&!e.shiftKey)e.preventDefault();}}
             style={{flex:1,background:"#f2f2f7",border:"1.5px solid #0a84ff",borderRadius:7,
               fontSize:13,fontWeight:500,color:"#1c1c1e",padding:"4px 8px",outline:"none"}}/>
           <button onClick={commitEdit} style={{background:"#0a84ff",border:"none",borderRadius:6,
@@ -341,8 +341,8 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
           <div style={{background:"#fff",borderRadius:10,padding:"10px 12px",marginBottom:8,
             boxShadow:`0 0 0 2px ${color}, 0 4px 12px rgba(0,0,0,.1)`}}>
             <input ref={inputRef} value={newText} onChange={e=>setNewText(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter")handleAdd();if(e.key==="Escape")setAdding(false);}}
-              placeholder="タスク名... (Enterで追加)"
+              onKeyDown={e=>{if(e.key==="Enter"&&e.shiftKey)handleAdd();if(e.key==="Escape")setAdding(false);if(e.key==="Enter"&&!e.shiftKey)e.preventDefault();}}
+              placeholder="タスク名... (Shift+Enterで追加)"
               style={{width:"100%",background:"none",border:"none",outline:"none",
                 fontSize:13,color:"#1c1c1e",fontFamily:"inherit",marginBottom:8}}/>
             <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
