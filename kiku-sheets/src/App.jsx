@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.15";
+const VERSION = "v1.16";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -144,7 +144,7 @@ function CommentPanel({task, onAdd, onDelete}) {
               {MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
             <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="メモを入力..."
+              onKeyDown={e=>{if(e.key==="Enter"&&e.shiftKey)handleAdd();if(e.key==="Enter"&&!e.shiftKey)e.preventDefault();}} placeholder="メモを入力... (Shift+Enterで追加)"
               style={{flex:1,minWidth:80,background:"rgba(0,0,0,.05)",border:"none",borderRadius:6,
                 color:"#1c1c1e",fontSize:11,padding:"4px 8px",outline:"none"}}/>
             <button onClick={handleAdd} style={{background:"#0a84ff",border:"none",borderRadius:6,
