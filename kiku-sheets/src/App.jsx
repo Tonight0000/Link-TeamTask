@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.24";
+const VERSION = "v1.25";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -513,6 +513,29 @@ export default function App() {
   const boardRef = useRef(null);
   const scrollStart = useRef({x:0, left:0});
   const [isScrolling, setIsScrolling] = useState(false);
+  const autoScrollRef = useRef(null);
+
+  // ドラッグ中の端スクロール
+  const startAutoScroll = (e) => {
+    stopAutoScroll();
+    const board = boardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    const ZONE = 80; // 端からこのpx以内でスクロール開始
+    const SPEED = 12;
+    const x = e.clientX;
+    let dir = 0;
+    if (x < rect.left + ZONE) dir = -1;
+    else if (x > rect.right - ZONE) dir = 1;
+    if (dir !== 0) {
+      autoScrollRef.current = setInterval(() => {
+        board.scrollLeft += dir * SPEED;
+      }, 16);
+    }
+  };
+  const stopAutoScroll = () => {
+    if (autoScrollRef.current) { clearInterval(autoScrollRef.current); autoScrollRef.current = null; }
+  };
   const [dragOverProject, setDragOverProject] = useState(null);
 
   const ts = () => new Date().toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"});
@@ -710,6 +733,9 @@ export default function App() {
               onWheel={e=>{
                 if(e.deltaY!==0){ e.preventDefault(); boardRef.current.scrollLeft+=e.deltaY*1.5; }
               }}
+              onDragOver={e=>{ startAutoScroll(e); }}
+              onDragLeave={e=>{ stopAutoScroll(); }}
+              onDrop={()=>{ stopAutoScroll(); }}
               onMouseDown={e=>{
                 // タスクカードやボタン以外の場所でドラッグスクロール
                 if(e.target===boardRef.current||e.target.classList.contains('board')){
