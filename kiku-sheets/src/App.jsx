@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.4";
+const VERSION = "v1.5";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -18,18 +18,24 @@ const STATUS = {
 };
 
 async function loadShared() {
-  try { const r = await window.storage.get(STORAGE_KEY, true); if (r?.value) return JSON.parse(r.value); } catch {}
+  // window.storage (Claude artifact環境)
+  try { if (window.storage) { const r = await window.storage.get(STORAGE_KEY, true); if (r?.value) return JSON.parse(r.value); } } catch {}
+  // localStorage (Vercel/ブラウザ環境)
+  try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
   return null;
 }
 async function saveShared(d) {
-  try { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } catch {}
+  try { if (window.storage) { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
 }
 async function loadUser() {
-  try { const r = await window.storage.get(USER_KEY, false); if (r?.value) return r.value; } catch {}
+  try { if (window.storage) { const r = await window.storage.get(USER_KEY, false); if (r?.value) return r.value; } } catch {}
+  try { const s = localStorage.getItem(USER_KEY); if (s) return s; } catch {}
   return null;
 }
 async function saveUser(name) {
-  try { await window.storage.set(USER_KEY, name, false); } catch {}
+  try { if (window.storage) { await window.storage.set(USER_KEY, name, false); } } catch {}
+  try { if (name) localStorage.setItem(USER_KEY, name); else localStorage.removeItem(USER_KEY); } catch {}
 }
 
 function getToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
