@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.16";
+const VERSION = "v1.19";
 const USER_KEY = "link-user-v1";
 const STORAGE_KEY = "link-team-v1";
 
@@ -49,9 +49,22 @@ function fmtDate(s) {
   return { display:`${mm}/${dd}(${day})`, diff, label:diff===0?"今日":diff===1?"明日":null };
 }
 
-function projColor(name, projects) {
-  const idx = projects.indexOf(name);
-  return PROJ_PALETTE[idx % PROJ_PALETTE.length] || "#8e8e93";
+function projColor(name, colorMap) {
+  return colorMap?.[name] || "#8e8e93";
+}
+
+function assignColors(projects, existingMap) {
+  const map = { ...(existingMap || {}) };
+  let usedIdxs = Object.values(map).map(c => PROJ_PALETTE.indexOf(c)).filter(i => i >= 0);
+  projects.forEach(p => {
+    if (!map[p]) {
+      // 未使用の色を探す
+      const nextIdx = PROJ_PALETTE.findIndex((_, i) => !usedIdxs.includes(i));
+      map[p] = PROJ_PALETTE[nextIdx >= 0 ? nextIdx : usedIdxs.length % PROJ_PALETTE.length];
+      usedIdxs.push(PROJ_PALETTE.indexOf(map[p]));
+    }
+  });
+  return map;
 }
 
 function StatusPill({status, onClick}) {
@@ -105,10 +118,10 @@ function DeadlineChip({dateStr, taskId, onSetDate}) {
   );
 }
 
-function CommentPanel({task, onAdd, onDelete}) {
+function CommentPanel({task, onAdd, onDelete, currentUser}) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
-  const [who, setWho] = useState(MEMBERS[0]);
+  const [who, setWho] = useState(currentUser || MEMBERS[0]);
   const ref = useRef();
   const comments = task.comments||[];
   const handleAdd = () => {
@@ -144,7 +157,7 @@ function CommentPanel({task, onAdd, onDelete}) {
               {MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
             <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter"&&e.shiftKey)handleAdd();if(e.key==="Enter"&&!e.shiftKey)e.preventDefault();}} placeholder="メモを入力... (Shift+Enterで追加)"
+              onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="メモを入力..."
               style={{flex:1,minWidth:80,background:"rgba(0,0,0,.05)",border:"none",borderRadius:6,
                 color:"#1c1c1e",fontSize:11,padding:"4px 8px",outline:"none"}}/>
             <button onClick={handleAdd} style={{background:"#0a84ff",border:"none",borderRadius:6,
@@ -157,7 +170,7 @@ function CommentPanel({task, onAdd, onDelete}) {
 }
 
 // ── タスクカード（ドラッグ対応）──
-function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart}) {
+function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart, onDragOver, onDropTask, currentUser}) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(task.text);
   const [dragging, setDragging] = useState(false);
@@ -175,8 +188,11 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
         setDragging(true);
         onDragStart(task.id);
         e.dataTransfer.effectAllowed="move";
+        e.stopPropagation();
       }}
       onDragEnd={()=>setDragging(false)}
+      onDragOver={e=>{ e.preventDefault(); e.stopPropagation(); if(onDragOver) onDragOver(task.id); }}
+      onDrop={e=>{ e.preventDefault(); e.stopPropagation(); if(onDropTask) onDropTask(task.id); }}
       style={{
         background:"#fff", borderRadius:10, padding:"12px 14px",
         boxShadow: dragging
@@ -218,7 +234,7 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
         <MemberPill member={task.member||"その他"}/>
         <DeadlineChip dateStr={task.date} taskId={task.id} onSetDate={onSetDate}/>
       </div>
-      <CommentPanel task={task} onAdd={onAddComment} onDelete={onDeleteComment}/>
+      <CommentPanel task={task} onAdd={onAddComment} onDelete={onDeleteComment} currentUser={currentUser}/>
     </div>
   );
 }
@@ -285,7 +301,7 @@ function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, o
 }
 
 // ── プロジェクト列（ドロップゾーン）──
-function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, isProjectDragOver}) {
+function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, setDragOverProject, isProjectDragOver, onReorderTask}) {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
@@ -309,14 +325,20 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
       overflow:"hidden", transition:"border .15s, background .15s",
       opacity: isProjectDragOver ? 0.7 : 1,
     }}
-      onDragOver={e=>{ e.preventDefault(); if(dragOver===false) setDragOver(true); }}
-      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
-      onDrop={e=>{ e.preventDefault(); setDragOver(false); onDrop(project); onProjectDrop(project); }}>
+      onDragOver={e=>{ e.preventDefault(); setDragOver(true); if(setDragOverProject) setDragOverProject(project); }}
+      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)){ setDragOver(false); if(setDragOverProject) setDragOverProject(null); } }}
+      onDrop={e=>{ e.preventDefault(); setDragOver(false); if(setDragOverProject) setDragOverProject(null); onDrop(project); onProjectDrop(project); }}>
 
       {/* ヘッダー */}
       <div style={{padding:"12px 14px 10px",borderBottom:`2px solid ${color}60`,background:"#fff"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:7}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
+            <span
+              draggable
+              onDragStart={e=>{ e.stopPropagation(); onProjectDragStart(project); e.dataTransfer.effectAllowed="move"; }}
+              onDragEnd={()=>{}}
+              style={{cursor:"grab",color:"#c7c7cc",fontSize:16,userSelect:"none",padding:"0 2px",lineHeight:1}}
+              title="ドラッグして並び替え">&#x2630;</span>
             <span style={{width:9,height:9,borderRadius:"50%",background:color,display:"inline-block",flexShrink:0}}/>
             <span style={{fontSize:13,fontWeight:700,color:"#1c1c1e"}}>{project}</span>
             <span style={{fontSize:11,fontWeight:600,color,background:color+"18",borderRadius:"20px",padding:"1px 7px"}}>{pendingCount}</span>
@@ -382,7 +404,10 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
             onCycleStatus={onCycleStatus} onSetDate={onSetDate}
             onDelete={onDelete} onEdit={onEdit}
             onAddComment={onAddComment} onDeleteComment={onDeleteComment}
-            onDragStart={onDragStart}/>
+            onDragStart={onDragStart}
+            onDragOver={hoverId=>{ if(hoverId!==t.id) onReorderTask && onReorderTask(project, t.id, hoverId); }}
+            onDropTask={()=>{}}
+            currentUser={currentUser}/>
         ))}
         <div style={{height:10}}/>
       </div>
@@ -449,6 +474,7 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const dragTaskId = useRef(null);
   const dragProjectName = useRef(null);
+  const dragType = useRef(null);
   const boardRef = useRef(null);
   const scrollStart = useRef({x:0, left:0});
   const [isScrolling, setIsScrolling] = useState(false);
@@ -458,7 +484,10 @@ export default function App() {
 
   useEffect(()=>{
     Promise.all([loadShared(), loadUser()]).then(([d,u])=>{
-      setData(d || {tasks:[], projects:[...DEFAULT_PROJECTS]});
+      const base = d || {tasks:[], projects:[...DEFAULT_PROJECTS]};
+      // colorsマップがなければ自動生成
+      if (!base.colors) base.colors = assignColors(base.projects, {});
+      setData(base);
       setCurrentUser(u || null);
       setLastSync(ts());
     });
@@ -484,41 +513,59 @@ export default function App() {
   };
   const addProject=()=>{
     if (!newProjName.trim()||projects.includes(newProjName.trim())) return;
-    save({...data,projects:[...projects,newProjName.trim()]});
+    const newProjects = [...projects, newProjName.trim()];
+    const newColors = assignColors(newProjects, data.colors||{});
+    save({...data, projects:newProjects, colors:newColors});
     setNewProjName(""); setShowProjModal(false);
   };
   const renameProject=(oldName, newName)=>{
     if (!newName.trim() || newName===oldName || projects.includes(newName.trim())) return;
+    const newColors = {...(data.colors||{})};
+    if (newColors[oldName]) { newColors[newName.trim()] = newColors[oldName]; delete newColors[oldName]; }
     save({
+      ...data,
       tasks: tasks.map(t=>t.project===oldName?{...t,project:newName.trim()}:t),
-      projects: projects.map(p=>p===oldName?newName.trim():p)
+      projects: projects.map(p=>p===oldName?newName.trim():p),
+      colors: newColors
     });
     if (filterProject===oldName) setFilterProject(newName.trim());
   };
   const deleteProject=name=>{
-    save({tasks:tasks.map(t=>t.project===name?{...t,project:"その他"}:t),projects:projects.filter(p=>p!==name)});
+    const newColors = {...(data.colors||{})};
+    delete newColors[name];
+    save({...data, tasks:tasks.map(t=>t.project===name?{...t,project:"その他"}:t), projects:projects.filter(p=>p!==name), colors:newColors});
     setConfirmDelete(null);
     if (filterProject===name) setFilterProject("all");
   };
-  const handleProjectDragStart = name => { dragProjectName.current = name; };
+  const handleReorderTask = (project, dragOverId) => {
+    if (!dragTaskId.current || dragTaskId.current === dragOverId) return;
+    const allTasks = [...tasks];
+    const dragIdx = allTasks.findIndex(t => t.id === dragTaskId.current);
+    const overIdx = allTasks.findIndex(t => t.id === dragOverId);
+    if (dragIdx === -1 || overIdx === -1) return;
+    const [moved] = allTasks.splice(dragIdx, 1);
+    allTasks.splice(overIdx, 0, moved);
+    save({...data, tasks: allTasks});
+  };
+  const handleProjectDragStart = name => { dragProjectName.current = name; dragType.current = "project"; };
   const handleProjectDrop = toName => {
-    if (!dragProjectName.current || dragProjectName.current === toName) { dragProjectName.current = null; setDragOverProject(null); return; }
+    if (dragType.current !== "project" || !dragProjectName.current || dragProjectName.current === toName) { dragProjectName.current = null; setDragOverProject(null); dragType.current = null; return; }
     const from = projects.indexOf(dragProjectName.current);
     const to = projects.indexOf(toName);
     const newProjects = [...projects];
     newProjects.splice(from, 1);
     newProjects.splice(to, 0, dragProjectName.current);
-    save({...data, projects: newProjects});
+    save({...data, projects: newProjects, colors: data.colors||{}});
     dragProjectName.current = null;
     setDragOverProject(null);
   };
 
   // ドラッグ&ドロップでプロジェクト移動
-  const handleDragStart = id => { dragTaskId.current = id; };
+  const handleDragStart = id => { dragTaskId.current = id; dragType.current = "task"; };
   const handleDrop = toProject => {
-    if (!dragTaskId.current) return;
+    if (dragType.current !== "task" || !dragTaskId.current) return;
     save({...data,tasks:tasks.map(t=>t.id===dragTaskId.current?{...t,project:toProject}:t)});
-    dragTaskId.current = null;
+    dragTaskId.current = null; dragType.current = null;
   };
 
   // フィルター適用
@@ -596,7 +643,7 @@ export default function App() {
             </button>
             {/* 各プロジェクト → クリックでフィルター（スクロールなし） */}
             {projects.map(p=>{
-              const c = projColor(p,projects);
+              const c = projColor(p,data.colors);
               return(
                 <SidebarProjectItem
                   key={p}
@@ -650,7 +697,7 @@ export default function App() {
                   key={p}
                   project={p}
                   tasks={visibleTasks.filter(t=>t.project===p)}
-                  color={projColor(p,projects)}
+                  color={projColor(p,data.colors)}
                   currentUser={currentUser}
                   onCycleStatus={cycleStatus}
                   onSetDate={setDate}
@@ -664,7 +711,9 @@ export default function App() {
                   onDrop={handleDrop}
                   onProjectDragStart={handleProjectDragStart}
                   onProjectDrop={handleProjectDrop}
+                  setDragOverProject={setDragOverProject}
                   isProjectDragOver={dragOverProject===p}
+                  onReorderTask={(proj, overId) => handleReorderTask(proj, overId)}
                 />
               ))}
             </div>
