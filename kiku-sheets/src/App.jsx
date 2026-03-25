@@ -609,6 +609,21 @@ export default function App() {
     return ()=>clearInterval(iv);
   },[]);
 
+  // ログイン画面が表示されたタイミングでGoogleボタンを描画
+  useEffect(()=>{
+    if (!authLoading && !authUser && data) {
+      const render = () => {
+        if (typeof google === 'undefined') return;
+        const btn = document.getElementById('google-signin-btn');
+        if (!btn) return;
+        google.accounts.id.renderButton(btn, {
+          theme: 'filled_black', size: 'large', text: 'signin_with', locale: 'ja', width: 220
+        });
+      };
+      setTimeout(render, 150);
+    }
+  },[authLoading, authUser, data]);
+
   const save = async next=>{ setData(next); setSaving(true); await saveShared(next); setSaving(false); setLastSync(ts()); };
 
   const tasks = data?.tasks||[];
@@ -744,8 +759,7 @@ export default function App() {
         <div className="titlebar">
           <div className="traffic r"/><div className="traffic y"/><div className="traffic g"/>
           <div className="win-title">
-            Link — Team Board&nbsp;
-            <span style={{fontWeight:400,color:"#48484a",fontSize:"11px"}}>{VERSION}</span>
+            Link — Team Board {VERSION}
           </div>
           <div className={`sync-pill${saving?" saving":""}`}>
             <span className="pulse"/>
