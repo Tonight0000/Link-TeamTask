@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.29";
+const VERSION = "v1.31";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -282,10 +282,11 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
   );
 }
 
-// ── サイドバー プロジェクト行（名前変更対応）──
-function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, onDelete}) {
+// ── サイドバー プロジェクト行（名前変更＋ドラッグ並び替え対応）──
+function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, onDelete, onProjectDragStart, onProjectDrop}) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(name);
+  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef();
 
   const startEdit = (e) => {
@@ -317,9 +318,15 @@ function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, o
   );
 
   return (
-    <div className="sb-proj-row"
+    <div className={`sb-proj-row${dragOver?" sb-drag-over":""}`}
+      draggable
+      onDragStart={e=>{ e.stopPropagation(); onProjectDragStart(name); e.dataTransfer.effectAllowed="move"; }}
+      onDragOver={e=>{ e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+      onDragLeave={()=>setDragOver(false)}
+      onDrop={e=>{ e.preventDefault(); e.stopPropagation(); setDragOver(false); onProjectDrop(name); }}
       onMouseEnter={e=>{e.currentTarget.querySelectorAll('button:not(.sb-item)').forEach(b=>b.style.opacity=1);}}
       onMouseLeave={e=>{e.currentTarget.querySelectorAll('button:not(.sb-item)').forEach(b=>b.style.opacity=0);}}>
+      <span style={{cursor:"grab",color:"#48484a",fontSize:11,padding:"0 2px 0 4px",userSelect:"none",flexShrink:0,lineHeight:1}} title="ドラッグして並び替え">⠿</span>
       <button className={`sb-item${isActive?" on":""}`} onClick={onSelect}>
         <span className="sb-dot" style={{background:color}}/>
         <span className="sb-label">{name}</span>
@@ -484,9 +491,10 @@ body{background:#e8e8ed;font-family:-apple-system,BlinkMacSystemFont,'Helvetica 
 .sb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .sb-label{font-size:12.5px;font-weight:500;color:#d0d0d0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
 .sb-count{font-size:11px;color:#48484a;font-weight:500;flex-shrink:0}
-.sb-proj-row{display:flex;align-items:center;border-radius:8px;transition:background .1s}
+.sb-proj-row{display:flex;align-items:center;border-radius:8px;transition:background .1s,border .1s;border:1.5px solid transparent}
 .sb-proj-row:hover{background:rgba(255,255,255,.07)}
 .sb-proj-row .sb-item{background:none !important}
+.sb-drag-over{background:rgba(10,132,255,.15)!important;border-color:rgba(10,132,255,.5)!important}
 .sb-proj-del{background:none;border:none;cursor:pointer;color:#48484a;font-size:11px;padding:4px 8px 4px 0;opacity:0;transition:opacity .15s;line-height:1;flex-shrink:0}
 .sb-proj-row:hover .sb-proj-del{opacity:1}
 .sb-proj-del:hover{color:#ff453a}
@@ -804,6 +812,8 @@ export default function App() {
                   onSelect={()=>setFilterProject(p)}
                   onRename={(newName)=>renameProject(p, newName)}
                   onDelete={()=>setConfirmDelete(p)}
+                  onProjectDragStart={handleProjectDragStart}
+                  onProjectDrop={handleProjectDrop}
                 />
               );
             })}
