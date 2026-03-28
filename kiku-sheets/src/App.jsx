@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.31";
+const VERSION = "v1.32";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -213,15 +213,17 @@ function CommentPanel({task, onAdd, onDelete, currentUser}) {
 }
 
 // ── タスクカード（ドラッグ対応）──
-function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart, onDragOver, onDropTask, currentUser}) {
+function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart, onDragOver, onDropTask, onToggleUrgent, currentUser}) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(task.text);
   const [dragging, setDragging] = useState(false);
   const df = task.date ? fmtDate(task.date) : null;
   const isDone = task.status==="done";
-  const isUrgent = !isDone&&df&&df.diff<0;
+  const isDeadlineUrgent = !isDone&&df&&df.diff<0;
   const isSoon = !isDone&&df&&(df.diff===0||df.diff===1);
-  const borderLeft = isUrgent?"3px solid #ff453a":isSoon?"3px solid #ff9f0a":"3px solid transparent";
+  const isUrgentFlag = !!task.urgent && !isDone;
+  const borderLeft = isUrgentFlag?"3px solid #ff453a":isDeadlineUrgent?"3px solid #ff453a":isSoon?"3px solid #ff9f0a":"3px solid transparent";
+  const cardBg = isUrgentFlag ? "rgba(255,69,58,.04)" : "#fff";
   const commitEdit = () => { if (editText.trim()) onEdit(task.id, editText.trim()); setEditing(false); };
 
   return (
@@ -237,9 +239,11 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
       onDragOver={e=>{ e.preventDefault(); e.stopPropagation(); if(onDragOver) onDragOver(task.id); }}
       onDrop={e=>{ e.preventDefault(); e.stopPropagation(); if(onDropTask) onDropTask(task.id); }}
       style={{
-        background:"#fff", borderRadius:10, padding:"12px 14px",
+        background: cardBg, borderRadius:10, padding:"12px 14px",
         boxShadow: dragging
           ? "0 8px 24px rgba(0,0,0,.2), 0 0 0 2px #0a84ff"
+          : isUrgentFlag
+          ? "0 1px 4px rgba(255,69,58,.15), 0 0 0 1px rgba(255,69,58,.2)"
           : "0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)",
         borderLeft, opacity: dragging ? 0.5 : isDone ? 0.4 : 1,
         marginBottom:8, transition:"box-shadow .15s, opacity .15s",
@@ -265,6 +269,15 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
             fontSize:13,fontWeight:500,color:isDone?"#aeaeb2":"#1c1c1e",
             lineHeight:1.4,cursor:"text",flex:1,
             textDecoration:isDone?"line-through":"none"}}>{task.text}</span>
+          <button onClick={e=>{e.stopPropagation();onToggleUrgent(task.id);}} title={isUrgentFlag?"緊急解除":"緊急にする"} style={{
+            background: isUrgentFlag?"rgba(255,69,58,.15)":"none",
+            border: isUrgentFlag?"1px solid rgba(255,69,58,.4)":"1px solid transparent",
+            borderRadius:5, cursor:"pointer",
+            color: isUrgentFlag?"#ff453a":"#d1d1d6",
+            fontSize:11, fontWeight:700, lineHeight:1, padding:"1px 4px", flexShrink:0, marginTop:1,
+            transition:"all .15s"}}
+            onMouseEnter={e=>{if(!isUrgentFlag){e.currentTarget.style.color="#ff453a";e.currentTarget.style.borderColor="rgba(255,69,58,.3)";}}}
+            onMouseLeave={e=>{if(!isUrgentFlag){e.currentTarget.style.color="#d1d1d6";e.currentTarget.style.borderColor="transparent";}}}>!</button>
           <button onClick={e=>{e.stopPropagation();onDelete(task.id);}} style={{
             background:"none",border:"none",cursor:"pointer",color:"#d1d1d6",
             fontSize:14,lineHeight:1,padding:"0 2px",flexShrink:0,marginTop:1}}
@@ -351,7 +364,7 @@ function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, o
 }
 
 // ── プロジェクト列（ドロップゾーン）──
-function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, setDragOverProject, isProjectDragOver, onReorderTask}) {
+function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, setDragOverProject, isProjectDragOver, onReorderTask, onToggleUrgent}) {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
@@ -459,6 +472,7 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
             onDragStart={onDragStart}
             onDragOver={()=>{ if(onReorderTask) onReorderTask(t.id); }}
             onDropTask={()=>{}}
+            onToggleUrgent={onToggleUrgent}
             currentUser={currentUser}/>
         ))}
         <div style={{height:10}}/>
@@ -638,6 +652,7 @@ export default function App() {
   const projects = data?.projects||DEFAULT_PROJECTS;
 
   const cycleStatus = id=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,status:STATUS_CYCLE[t.status]??"undecided"}:t)});
+  const toggleUrgent = id=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,urgent:!t.urgent}:t)});
   const setDate=(id,date)=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,date}:t)});
   const editTask=(id,text)=>save({...data,tasks:tasks.map(t=>t.id===id?{...t,text}:t)});
   const deleteTask=id=>save({...data,tasks:tasks.filter(t=>t.id!==id)});
@@ -879,6 +894,7 @@ export default function App() {
                   setDragOverProject={setDragOverProject}
                   isProjectDragOver={dragOverProject===p}
                   onReorderTask={(overId) => handleReorderTask(overId)}
+                  onToggleUrgent={toggleUrgent}
                 />
               ))}
             </div>
