@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.32";
+const VERSION = "v1.33";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -585,7 +585,8 @@ export default function App() {
     });
     // Google Sign-In コールバック
     window.__googleSignInCallback = (response) => {
-      const payload = JSON.parse(atob(response.credential.split(".")[1]));
+      const b64 = response.credential.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+      const payload = JSON.parse(atob(b64.padEnd(b64.length+(4-b64.length%4)%4,"=")));
       const domain = payload.email?.split("@")[1];
       if (domain === ALLOWED_DOMAIN || !ALLOWED_DOMAIN) {
         const info = { name: payload.name, email: payload.email, picture: payload.picture };
