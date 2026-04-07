@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.33";
+const VERSION = "v1.34";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -241,12 +241,13 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
       style={{
         background: cardBg, borderRadius:10, padding:"12px 14px",
         boxShadow: dragging
-          ? "0 8px 24px rgba(0,0,0,.2), 0 0 0 2px #0a84ff"
+          ? "0 16px 40px rgba(0,0,0,.22), 0 0 0 2px #0a84ff"
           : isUrgentFlag
           ? "0 1px 4px rgba(255,69,58,.15), 0 0 0 1px rgba(255,69,58,.2)"
           : "0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)",
-        borderLeft, opacity: dragging ? 0.5 : isDone ? 0.4 : 1,
-        marginBottom:8, transition:"box-shadow .15s, opacity .15s",
+        borderLeft, opacity: dragging ? 0.55 : isDone ? 0.4 : 1,
+        marginBottom:8, transition:"box-shadow .2s, opacity .2s, transform .2s",
+        transform: dragging ? "scale(1.03) rotate(1deg)" : "scale(1) rotate(0deg)",
         cursor: editing ? "default" : "grab",
       }}
       onMouseEnter={e=>{ if(!dragging) e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.06)"; }}
@@ -372,6 +373,7 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
   useEffect(()=>{ if(currentUser) setNewMember(currentUser); }, [currentUser]);
   const [newDate, setNewDate] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState(null);
   const inputRef = useRef();
   const pendingCount = tasks.filter(t=>t.status!=="done").length;
 
@@ -391,8 +393,8 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
       opacity: isProjectDragOver ? 0.7 : 1,
     }}
       onDragOver={e=>{ e.preventDefault(); setDragOver(true); if(setDragOverProject) setDragOverProject(project); }}
-      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)){ setDragOver(false); if(setDragOverProject) setDragOverProject(null); } }}
-      onDrop={e=>{ e.preventDefault(); setDragOver(false); if(setDragOverProject) setDragOverProject(null); onDrop(project); onProjectDrop(project); }}>
+      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)){ setDragOver(false); setDropTargetId(null); if(setDragOverProject) setDragOverProject(null); } }}
+      onDrop={e=>{ e.preventDefault(); setDragOver(false); setDropTargetId(null); if(setDragOverProject) setDragOverProject(null); onDrop(project); onProjectDrop(project); }}>
 
       {/* ヘッダー */}
       <div style={{padding:"12px 14px 10px",borderBottom:`2px solid ${color}60`,background:"#fff"}}>
@@ -465,15 +467,21 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
           <div style={{textAlign:"center",padding:"24px 0",color:"#c7c7cc",fontSize:12,fontStyle:"italic"}}>タスクなし</div>
         )}
         {tasks.map(t=>(
-          <TaskCard key={t.id} task={t}
-            onCycleStatus={onCycleStatus} onSetDate={onSetDate}
-            onDelete={onDelete} onEdit={onEdit}
-            onAddComment={onAddComment} onDeleteComment={onDeleteComment}
-            onDragStart={onDragStart}
-            onDragOver={()=>{ if(onReorderTask) onReorderTask(t.id); }}
-            onDropTask={()=>{}}
-            onToggleUrgent={onToggleUrgent}
-            currentUser={currentUser}/>
+          <div key={t.id}>
+            {dropTargetId===t.id && (
+              <div style={{height:3,background:"#0a84ff",borderRadius:3,margin:"0 0 6px",
+                boxShadow:"0 0 6px rgba(10,132,255,.5)",transition:"all .1s"}}/>
+            )}
+            <TaskCard task={t}
+              onCycleStatus={onCycleStatus} onSetDate={onSetDate}
+              onDelete={onDelete} onEdit={onEdit}
+              onAddComment={onAddComment} onDeleteComment={onDeleteComment}
+              onDragStart={onDragStart}
+              onDragOver={()=>setDropTargetId(t.id)}
+              onDropTask={()=>{ if(onReorderTask) onReorderTask(t.id); setDropTargetId(null); }}
+              onToggleUrgent={onToggleUrgent}
+              currentUser={currentUser}/>
+          </div>
         ))}
         <div style={{height:10}}/>
       </div>
