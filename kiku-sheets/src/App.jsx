@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.34";
+const VERSION = "v1.35";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -386,10 +386,10 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
   return (
     <div id={`col-${project}`} style={{
       width:280, flexShrink:0, display:"flex", flexDirection:"column",
-      background: dragOver ? `${color}08` : "rgba(246,246,248,1)",
+      background: dragOver ? `${color}06` : "rgba(246,246,248,1)",
       borderRadius:12,
-      border: isProjectDragOver ? `2px dashed ${color}` : dragOver ? `2px solid ${color}` : "1px solid rgba(0,0,0,.07)",
-      overflow:"hidden", transition:"border .15s, background .15s",
+      border: isProjectDragOver ? `2px dashed ${color}` : "1px solid rgba(0,0,0,.07)",
+      overflow:"hidden", transition:"background .2s",
       opacity: isProjectDragOver ? 0.7 : 1,
     }}
       onDragOver={e=>{ e.preventDefault(); setDragOver(true); if(setDragOverProject) setDragOverProject(project); }}
@@ -454,16 +454,7 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
           </div>
         )}
 
-        {/* ドロップヒント */}
-        {dragOver && (
-          <div style={{border:`2px dashed ${color}`,borderRadius:10,padding:"16px 0",
-            textAlign:"center",color,fontSize:12,fontWeight:600,marginBottom:8,
-            background:color+"0a"}}>
-            ここにドロップ
-          </div>
-        )}
-
-        {tasks.length===0&&!adding&&!dragOver&&(
+        {tasks.length===0&&!adding&&(
           <div style={{textAlign:"center",padding:"24px 0",color:"#c7c7cc",fontSize:12,fontStyle:"italic"}}>タスクなし</div>
         )}
         {tasks.map(t=>(
