@@ -212,11 +212,10 @@ function CommentPanel({task, onAdd, onDelete, currentUser}) {
   );
 }
 
-// ── タスクカード（ドラッグ対応）──
-function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onDragStart, onDragOver, onDropTask, onToggleUrgent, currentUser}) {
+// ── タスクカード（Pointer Events ドラッグ対応）──
+function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddComment, onDeleteComment, onPointerDragStart, isDragging, onToggleUrgent, currentUser}) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(task.text);
-  const [dragging, setDragging] = useState(false);
   const df = task.date ? fmtDate(task.date) : null;
   const isDone = task.status==="done";
   const isDeadlineUrgent = !isDone&&df&&df.diff<0;
@@ -228,30 +227,22 @@ function TaskCard({task, onCycleStatus, onSetDate, onDelete, onEdit, onAddCommen
 
   return (
     <div
-      draggable={!editing}
-      onDragStart={e=>{
-        setDragging(true);
-        onDragStart(task.id);
-        e.dataTransfer.effectAllowed="move";
-        e.stopPropagation();
-      }}
-      onDragEnd={()=>setDragging(false)}
-      onDragOver={e=>{ e.preventDefault(); e.stopPropagation(); if(onDragOver) onDragOver(task.id); }}
-      onDrop={e=>{ e.preventDefault(); e.stopPropagation(); if(onDropTask) onDropTask(task.id); }}
+      data-task-id={task.id}
+      data-project={task.project}
+      onPointerDown={e=>{ if(!editing && e.button===0) onPointerDragStart(e, task); }}
       style={{
         background: cardBg, borderRadius:10, padding:"12px 14px",
-        boxShadow: dragging
-          ? "0 16px 40px rgba(0,0,0,.22), 0 0 0 2px #0a84ff"
-          : isUrgentFlag
+        boxShadow: isUrgentFlag
           ? "0 1px 4px rgba(255,69,58,.15), 0 0 0 1px rgba(255,69,58,.2)"
           : "0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)",
-        borderLeft, opacity: dragging ? 0.55 : isDone ? 0.4 : 1,
-        marginBottom:8, transition:"box-shadow .2s, opacity .2s, transform .2s",
-        transform: dragging ? "scale(1.03) rotate(1deg)" : "scale(1) rotate(0deg)",
+        borderLeft,
+        opacity: isDragging ? 0.2 : isDone ? 0.4 : 1,
+        marginBottom:8, transition:"box-shadow .15s, opacity .15s",
         cursor: editing ? "default" : "grab",
+        userSelect:"none",
       }}
-      onMouseEnter={e=>{ if(!dragging) e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.06)"; }}
-      onMouseLeave={e=>{ if(!dragging) e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)"; }}>
+      onMouseEnter={e=>{ if(!isDragging) e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.06)"; }}
+      onMouseLeave={e=>{ if(!isDragging) e.currentTarget.style.boxShadow = isUrgentFlag?"0 1px 4px rgba(255,69,58,.15), 0 0 0 1px rgba(255,69,58,.2)":"0 1px 4px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06)"; }}>
 
       {editing ? (
         <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:8}}>
@@ -365,15 +356,13 @@ function SidebarProjectItem({name, color, count, isActive, onSelect, onRename, o
 }
 
 // ── プロジェクト列（ドロップゾーン）──
-function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onDragStart, onDrop, onProjectDragStart, onProjectDrop, setDragOverProject, isProjectDragOver, onReorderTask, onToggleUrgent}) {
+function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSetDate, onDelete, onEdit, onAddTask, onAddComment, onDeleteComment, onSetConfirmDelete, onProjectDragStart, onProjectDrop, isProjectDragOver, onPointerDragStart, activeDragTaskId, dropTargetId, onToggleUrgent}) {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0]);
   // currentUserが変わったらnewMemberも更新
   useEffect(()=>{ if(currentUser) setNewMember(currentUser); }, [currentUser]);
   const [newDate, setNewDate] = useState("");
-  const [dragOver, setDragOver] = useState(false);
-  const [dropTargetId, setDropTargetId] = useState(null);
   const inputRef = useRef();
   const pendingCount = tasks.filter(t=>t.status!=="done").length;
 
@@ -384,17 +373,14 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
   };
 
   return (
-    <div id={`col-${project}`} style={{
+    <div id={`col-${project}`} data-project={project} style={{
       width:280, flexShrink:0, display:"flex", flexDirection:"column",
-      background: dragOver ? `${color}06` : "rgba(246,246,248,1)",
+      background: "rgba(246,246,248,1)",
       borderRadius:12,
       border: isProjectDragOver ? `2px dashed ${color}` : "1px solid rgba(0,0,0,.07)",
-      overflow:"hidden", transition:"background .2s",
+      overflow:"hidden", transition:"border .15s",
       opacity: isProjectDragOver ? 0.7 : 1,
-    }}
-      onDragOver={e=>{ e.preventDefault(); setDragOver(true); if(setDragOverProject) setDragOverProject(project); }}
-      onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)){ setDragOver(false); setDropTargetId(null); if(setDragOverProject) setDragOverProject(null); } }}
-      onDrop={e=>{ e.preventDefault(); setDragOver(false); setDropTargetId(null); if(setDragOverProject) setDragOverProject(null); onDrop(project); onProjectDrop(project); }}>
+    }}>
 
       {/* ヘッダー */}
       <div style={{padding:"12px 14px 10px",borderBottom:`2px solid ${color}60`,background:"#fff"}}>
@@ -458,18 +444,17 @@ function ProjectColumn({project, tasks, color, currentUser, onCycleStatus, onSet
           <div style={{textAlign:"center",padding:"24px 0",color:"#c7c7cc",fontSize:12,fontStyle:"italic"}}>タスクなし</div>
         )}
         {tasks.map(t=>(
-          <div key={t.id}>
-            {dropTargetId===t.id && (
+          <div key={t.id} data-task-id={t.id} data-project={project}>
+            {dropTargetId===t.id && activeDragTaskId && activeDragTaskId!==t.id && (
               <div style={{height:3,background:"#0a84ff",borderRadius:3,margin:"0 0 6px",
-                boxShadow:"0 0 6px rgba(10,132,255,.5)",transition:"all .1s"}}/>
+                boxShadow:"0 0 8px rgba(10,132,255,.6)"}}/>
             )}
             <TaskCard task={t}
               onCycleStatus={onCycleStatus} onSetDate={onSetDate}
               onDelete={onDelete} onEdit={onEdit}
               onAddComment={onAddComment} onDeleteComment={onDeleteComment}
-              onDragStart={onDragStart}
-              onDragOver={()=>setDropTargetId(t.id)}
-              onDropTask={()=>{ if(onReorderTask) onReorderTask(t.id); setDropTargetId(null); }}
+              onPointerDragStart={onPointerDragStart}
+              isDragging={activeDragTaskId===t.id}
               onToggleUrgent={onToggleUrgent}
               currentUser={currentUser}/>
           </div>
@@ -540,13 +525,17 @@ export default function App() {
   const [showProjModal, setShowProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const dragTaskId = useRef(null);
   const dragProjectName = useRef(null);
-  const dragType = useRef(null);
   const boardRef = useRef(null);
   const scrollStart = useRef({x:0, left:0});
   const [isScrolling, setIsScrolling] = useState(false);
   const autoScrollRef = useRef(null);
+  // Pointer drag state
+  const [activeDrag, setActiveDrag] = useState(null); // {task, ox, oy}
+  const [pointerPos, setPointerPos] = useState({x:0,y:0});
+  const [dropTargetTaskId, setDropTargetTaskId] = useState(null);
+  const activeDragRef = useRef(null);
+  const latestDataRef = useRef(null);
 
   // ドラッグ中の端スクロール
   const startAutoScroll = (e) => {
@@ -572,6 +561,65 @@ export default function App() {
   const [dragOverProject, setDragOverProject] = useState(null);
 
   const ts = () => new Date().toLocaleString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+
+  // latestDataRef を常に最新に保つ
+  useEffect(()=>{ latestDataRef.current = data; }, [data]);
+
+  // Pointer drag の開始
+  const startPointerDrag = (e, task) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const info = {task, ox: e.clientX-rect.left, oy: e.clientY-rect.top};
+    activeDragRef.current = info;
+    setActiveDrag(info);
+    setPointerPos({x:e.clientX, y:e.clientY});
+  };
+
+  // Pointer move/up のグローバルリスナー
+  useEffect(()=>{
+    if (!activeDrag) return;
+    const onMove = e => {
+      setPointerPos({x:e.clientX, y:e.clientY});
+      // ドロップ先カードをhover検知
+      const els = document.elementsFromPoint(e.clientX, e.clientY);
+      const cardEl = els.find(el=>el.dataset?.taskId && el.dataset.taskId!==activeDrag.task.id);
+      setDropTargetTaskId(cardEl?.dataset?.taskId || null);
+      // 横スクロール
+      startAutoScroll(e);
+    };
+    const onUp = e => {
+      stopAutoScroll();
+      const d = latestDataRef.current;
+      if (!d || !activeDragRef.current) { setActiveDrag(null); activeDragRef.current=null; setDropTargetTaskId(null); return; }
+      const draggedTask = activeDragRef.current.task;
+      const els = document.elementsFromPoint(e.clientX, e.clientY);
+      const cardEl = els.find(el=>el.dataset?.taskId && el.dataset.taskId!==draggedTask.id);
+      const colEl = els.find(el=>el.dataset?.project);
+      if (cardEl) {
+        const targetTaskId = cardEl.dataset.taskId;
+        const targetProject = cardEl.dataset.project;
+        if (targetProject === draggedTask.project) {
+          // 同じ列内で並び替え
+          const allTasks = [...d.tasks];
+          const from = allTasks.findIndex(t=>t.id===draggedTask.id);
+          const to = allTasks.findIndex(t=>t.id===targetTaskId);
+          if (from!==-1 && to!==-1) { const [m]=allTasks.splice(from,1); allTasks.splice(to,0,m); }
+          save({...d, tasks:allTasks});
+        } else {
+          // 別の列に移動
+          save({...d, tasks:d.tasks.map(t=>t.id===draggedTask.id?{...t,project:targetProject}:t)});
+        }
+      } else if (colEl && colEl.dataset.project !== draggedTask.project) {
+        save({...d, tasks:d.tasks.map(t=>t.id===draggedTask.id?{...t,project:colEl.dataset.project}:t)});
+      }
+      setActiveDrag(null);
+      activeDragRef.current = null;
+      setDropTargetTaskId(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return ()=>{ window.removeEventListener('pointermove',onMove); window.removeEventListener('pointerup',onUp); stopAutoScroll(); };
+  }, [activeDrag?.task?.id]);
 
   useEffect(()=>{
     // Google認証チェック（localStorageに保存済みなら自動通過）
@@ -689,19 +737,9 @@ export default function App() {
     setConfirmDelete(null);
     if (filterProject===name) setFilterProject("all");
   };
-  const handleReorderTask = (overTaskId) => {
-    if (!dragTaskId.current || dragType.current !== "task" || dragTaskId.current === overTaskId) return;
-    const allTasks = [...tasks];
-    const dragIdx = allTasks.findIndex(t => t.id === dragTaskId.current);
-    const overIdx = allTasks.findIndex(t => t.id === overTaskId);
-    if (dragIdx === -1 || overIdx === -1) return;
-    const [moved] = allTasks.splice(dragIdx, 1);
-    allTasks.splice(overIdx, 0, moved);
-    save({...data, tasks: allTasks});
-  };
-  const handleProjectDragStart = name => { dragProjectName.current = name; dragType.current = "project"; };
+  const handleProjectDragStart = name => { dragProjectName.current = name; };
   const handleProjectDrop = toName => {
-    if (dragType.current !== "project" || !dragProjectName.current || dragProjectName.current === toName) { dragProjectName.current = null; setDragOverProject(null); dragType.current = null; return; }
+    if (!dragProjectName.current || dragProjectName.current === toName) { dragProjectName.current = null; setDragOverProject(null); return; }
     const from = projects.indexOf(dragProjectName.current);
     const to = projects.indexOf(toName);
     const newProjects = [...projects];
@@ -712,13 +750,6 @@ export default function App() {
     setDragOverProject(null);
   };
 
-  // ドラッグ&ドロップでプロジェクト移動
-  const handleDragStart = id => { dragTaskId.current = id; dragType.current = "task"; };
-  const handleDrop = toProject => {
-    if (dragType.current !== "task" || !dragTaskId.current) return;
-    save({...data,tasks:tasks.map(t=>t.id===dragTaskId.current?{...t,project:toProject}:t)});
-    dragTaskId.current = null; dragType.current = null;
-  };
 
   // フィルター適用
   let visibleTasks = filterMember==="all" ? tasks : tasks.filter(t=>t.member===filterMember);
@@ -852,9 +883,6 @@ export default function App() {
               onWheel={e=>{
                 if(e.deltaY!==0){ e.preventDefault(); boardRef.current.scrollLeft+=e.deltaY*1.5; }
               }}
-              onDragOver={e=>{ startAutoScroll(e); }}
-              onDragLeave={e=>{ stopAutoScroll(); }}
-              onDrop={()=>{ stopAutoScroll(); }}
               onMouseDown={e=>{
                 // タスクカードやボタン以外の場所でドラッグスクロール
                 if(e.target===boardRef.current||e.target.classList.contains('board')){
@@ -887,13 +915,12 @@ export default function App() {
                   onAddComment={addComment}
                   onDeleteComment={delComment}
                   onSetConfirmDelete={setConfirmDelete}
-                  onDragStart={handleDragStart}
-                  onDrop={handleDrop}
                   onProjectDragStart={handleProjectDragStart}
                   onProjectDrop={handleProjectDrop}
-                  setDragOverProject={setDragOverProject}
                   isProjectDragOver={dragOverProject===p}
-                  onReorderTask={(overId) => handleReorderTask(overId)}
+                  onPointerDragStart={startPointerDrag}
+                  activeDragTaskId={activeDrag?.task?.id}
+                  dropTargetId={dropTargetTaskId}
                   onToggleUrgent={toggleUrgent}
                 />
               ))}
@@ -901,6 +928,28 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {activeDrag&&(
+        <div style={{
+          position:'fixed',
+          left: pointerPos.x - activeDrag.ox,
+          top: pointerPos.y - activeDrag.oy,
+          width: 258,
+          pointerEvents:'none',
+          zIndex:999,
+          transform:'rotate(1.5deg) scale(1.04)',
+          boxShadow:'0 20px 50px rgba(0,0,0,.25)',
+          borderRadius:10,
+          opacity:0.95,
+          background: activeDrag.task.urgent?"rgba(255,69,58,.04)":"#fff",
+          padding:"12px 14px",
+          borderLeft: activeDrag.task.urgent?"3px solid #ff453a":"3px solid transparent",
+        }}>
+          <div style={{fontSize:13,fontWeight:500,color:'#1c1c1e',lineHeight:1.4,userSelect:'none'}}>
+            {activeDrag.task.text}
+          </div>
+        </div>
+      )}
 
       {showProjModal&&(
         <div className="modal-bg" onClick={()=>setShowProjModal(false)}>
