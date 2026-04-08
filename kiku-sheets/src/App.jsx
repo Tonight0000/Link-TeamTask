@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const VERSION = "v1.35";
+const VERSION = "v1.37";
 const USER_KEY = "link-user-v1";
 const ALLOWED_DOMAIN = "cinemaleap.com"; // このドメインのGoogleアカウントのみ許可
 const AUTH_KEY = "link-auth-v1";
@@ -536,6 +536,7 @@ export default function App() {
   const [dropTargetTaskId, setDropTargetTaskId] = useState(null);
   const activeDragRef = useRef(null);
   const latestDataRef = useRef(null);
+  const lastSaveRef = useRef(0);
 
   // ドラッグ中の端スクロール
   const startAutoScroll = (e) => {
@@ -675,7 +676,10 @@ export default function App() {
       setCurrentUser(u || null);
       setLastSync(ts());
     });
-    const iv=setInterval(()=>loadShared().then(d=>{if(d){setData(d);setLastSync(ts());}}),15000);
+    const iv=setInterval(()=>{
+      if(Date.now()-lastSaveRef.current < 8000) return; // 保存直後8秒はスキップ
+      loadShared().then(d=>{if(d){setData(d);setLastSync(ts());}});
+    },15000);
     return ()=>clearInterval(iv);
   },[]);
 
@@ -694,7 +698,7 @@ export default function App() {
     }
   },[authLoading, authUser, data]);
 
-  const save = async next=>{ setData(next); setSaving(true); await saveShared(next); setSaving(false); setLastSync(ts()); };
+  const save = async next=>{ lastSaveRef.current=Date.now(); setData(next); setSaving(true); await saveShared(next); setSaving(false); setLastSync(ts()); };
 
   const tasks = data?.tasks||[];
   const projects = data?.projects||DEFAULT_PROJECTS;
